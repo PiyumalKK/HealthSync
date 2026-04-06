@@ -22,7 +22,7 @@ A cloud-native microservices healthcare platform built with Node.js, Python/Fast
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/<your-username>/healthsync.git
+   git clone https://github.com/PiyumalKK/HealthSync.git
    cd healthsync
    ```
 
