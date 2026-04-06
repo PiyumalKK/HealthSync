@@ -1,0 +1,202 @@
+version: '3.8'
+
+services:
+  # ===================== DATABASES =====================
+  mongodb:
+    image: mongo:7
+    container_name: healthsync-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - healthsync-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: healthsync-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_MULTIPLE_DATABASES: healthsync_doctors,healthsync_appointments
+    ports:
+      - "5930:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-postgres.sh:/docker-entrypoint-initdb.d/init-postgres.sh
+    networks:
+      - healthsync-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: healthsync-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - healthsync-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===================== MICROSERVICES =====================
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: healthsync-api-gateway
+    ports:
+      - "8090:8090"
+    environment:
+      PORT: 8090
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
+      MONGO_URI: mongodb://mongodb:27017/healthsync_auth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID in .env}
+      FRONTEND_URL: http://localhost:3000
+      PATIENT_SERVICE_URL: http://patient-service:3001
+      DOCTOR_SERVICE_URL: http://doctor-service:3002
+      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
+      PRESCRIPTION_SERVICE_URL: http://prescription-service:3004
+      NOTIFICATION_SERVICE_URL: http://notification-service:3005
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      patient-service:
+        condition: service_started
+      doctor-service:
+        condition: service_started
+      appointment-service:
+        condition: service_started
+      prescription-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+    networks:
+      - healthsync-network
+    restart: unless-stopped
+
+  patient-service:
+    build: ./services/patient-service
+    container_name: healthsync-patient-service
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      MONGO_URI: mongodb://mongodb:27017/healthsync_patients
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - healthsync-network
+    restart: unless-stopped
+
+  doctor-service:
+    build: ./services/doctor-service
+    container_name: healthsync-doctor-service
+    ports:
+      - "3002:3002"
+    environment:
+      PORT: 3002
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: healthsync_doctors
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - healthsync-network
+    restart: unless-stopped
+
+  appointment-service:
+    build: ./services/appointment-service
+    container_name: healthsync-appointment-service
+    ports:
+      - "3003:3003"
+    environment:
+      PORT: 3003
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: healthsync_appointments
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      NOTIFICATION_SERVICE_URL: http://notification-service:3005
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - healthsync-network
+    restart: unless-stopped
+
+  prescription-service:
+    build: ./services/prescription-service
+    container_name: healthsync-prescription-service
+    ports:
+      - "3004:3004"
+    environment:
+      PORT: 3004
+      MONGO_URI: mongodb://mongodb:27017/healthsync_prescriptions
+      NOTIFICATION_SERVICE_URL: http://notification-service:3005
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - healthsync-network
+    restart: unless-stopped
+
+  notification-service:
+    build: ./services/notification-service
+    container_name: healthsync-notification-service
+    ports:
+      - "3005:3005"
+    environment:
+      MONGO_URI: mongodb://mongodb:27017
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - healthsync-network
+    restart: unless-stopped
+
+  # ===================== FRONTEND =====================
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID in .env}
+        VITE_API_URL: http://localhost:8090/api
+    container_name: healthsync-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+    networks:
+      - healthsync-network
+    restart: unless-stopped
+
+# ===================== NETWORKS & VOLUMES =====================
+networks:
+  healthsync-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  postgres_data:
+  redis_data:

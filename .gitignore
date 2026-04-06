@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+dist/
+build/
+__pycache__/
+*.pyc
+.venv/
+
+# Project documentation
+HEALTHSYNC_DOCUMENTATION.md
+HEALTHSYNC_FUNCTIONALITIES.md
+HEALTHSYNC_UX_JOURNEYS.md
