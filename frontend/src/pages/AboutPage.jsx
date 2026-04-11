@@ -43,7 +43,7 @@ const milestones = [
   { year: '2023', title: '10,000 Patients', desc: 'Reached our first major milestone of 10,000 registered patients.' },
   { year: '2024', title: 'AI Integration', desc: 'Launched AI-powered health analytics and smart scheduling.' },
   { year: '2025', title: '100+ Doctors', desc: 'Expanded our network to over 100 verified healthcare specialists.' },
-  { year: '2026', title: '50,000+ Patients', desc: 'Serving over 50,000 patients across Sri Lanka.' },
+  { year: '2026', title: '10,000+ Patients', desc: 'Serving over 10,000 patients across Sri Lanka.' },
 ]
 
 export default function AboutPage() {
@@ -125,12 +125,12 @@ export default function AboutPage() {
                 remained frustratingly analog.
               </p>
               <p className="text-slate-500 leading-relaxed mb-8">
-                Today, we serve over 50,000 patients across multiple cities, connecting them with 200+ verified healthcare professionals. 
-                Our platform processes thousands of appointments monthly and has issued over 100,000 digital prescriptions.
+                Today, we serve over 10,000 patients across multiple cities, connecting them with 200+ verified healthcare professionals. 
+                Our platform processes thousands of appointments monthly and has issued over 25,000 digital prescriptions.
               </p>
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center p-4 bg-primary-50 rounded-2xl">
-                  <div className="text-2xl font-display font-extrabold text-primary-600">50K+</div>
+                  <div className="text-2xl font-display font-extrabold text-primary-600">10K+</div>
                   <p className="text-xs text-slate-500 mt-1">Patients</p>
                 </div>
                 <div className="text-center p-4 bg-accent-50 rounded-2xl">

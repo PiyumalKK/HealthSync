@@ -156,7 +156,7 @@ export default function RegisterPage() {
             {/* Benefits */}
             <div className="space-y-4">
               {[
-                { icon: '🏥', text: 'Access to 500+ verified specialists across Sri Lanka' },
+                { icon: '🏥', text: 'Access to 200+ verified specialists across Sri Lanka' },
                 { icon: '📅', text: 'Easy online appointment booking' },
                 { icon: '💊', text: 'Digital prescriptions & records' },
                 { icon: '🔔', text: 'Real-time health notifications' },

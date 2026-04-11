@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
 import { doctorsAPI, appointmentsAPI } from '../services/api'
@@ -102,6 +102,8 @@ const timeSlots = [
 export default function DoctorDetailPage() {
   const { id } = useParams()
   const { user, isAuthenticated } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [doctor, setDoctor] = useState(doctorData[id] || null)
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState('')
@@ -149,7 +151,7 @@ export default function DoctorDetailPage() {
       return
     }
     if (!isAuthenticated) {
-      toast.error('Please log in to book an appointment')
+      navigate('/login', { state: { from: location.pathname } })
       return
     }
     setBooking(true)
