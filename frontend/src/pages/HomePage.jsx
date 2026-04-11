@@ -97,7 +97,7 @@ const testimonials = [
 ]
 
 const stats = [
-  { value: '50K+', label: 'Happy Patients' },
+  { value: '10K+', label: 'Happy Patients' },
   { value: '200+', label: 'Expert Doctors' },
   { value: '15+', label: 'Specializations' },
   { value: '98%', label: 'Satisfaction Rate' },
@@ -125,7 +125,7 @@ export default function HomePage() {
             >
               <motion.div variants={fadeInUp} className="inline-flex items-center space-x-2 px-4 py-2 bg-white/80 rounded-full shadow-sm border border-primary-100 mb-6">
                 <span className="flex h-2 w-2 rounded-full bg-accent-500 animate-pulse" />
-                <span className="text-sm font-medium text-slate-600">Trusted by 50,000+ patients across Sri Lanka</span>
+                <span className="text-sm font-medium text-slate-600">Trusted by 10,000+ patients across Sri Lanka</span>
               </motion.div>
 
               <motion.h1 variants={fadeInUp} className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-display font-extrabold leading-[1.1] mb-6">

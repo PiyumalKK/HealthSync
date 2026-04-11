@@ -156,7 +156,7 @@ export default function RegisterPage() {
             {/* Benefits */}
             <div className="space-y-4">
               {[
-                { icon: '🏥', text: 'Access to 500+ verified specialists across Sri Lanka' },
+                { icon: '🏥', text: 'Access to 200+ verified specialists across Sri Lanka' },
                 { icon: '📅', text: 'Easy online appointment booking' },
                 { icon: '💊', text: 'Digital prescriptions & records' },
                 { icon: '🔔', text: 'Real-time health notifications' },
@@ -276,7 +276,7 @@ export default function RegisterPage() {
                       name="email"
                       value={formData.email}
                       onChange={handleChange}
-                      placeholder="you@example.com"
+                      placeholder="you@healthsync.lk"
                       required
                       className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
                     />

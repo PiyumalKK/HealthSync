@@ -88,7 +88,9 @@ Object.entries(services).forEach(([path, target]) => {
   app.use(path, (req, res, next) => {
     const fullPath = path + req.path;
     const isPublic = publicPaths.some(p => fullPath.startsWith(p));
-    if (isPublic || req.method === 'OPTIONS') {
+    // Allow public GET for individual doctor profiles (/api/doctors/:uuid)
+    const isDoctorDetail = path === '/api/doctors' && req.method === 'GET' && /^\/[0-9a-f-]{36}$/.test(req.path);
+    if (isPublic || isDoctorDetail || req.method === 'OPTIONS') {
       return next();
     }
     return authMiddleware(req, res, next);

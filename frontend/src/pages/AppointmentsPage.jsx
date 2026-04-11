@@ -53,9 +53,9 @@ export default function AppointmentsPage() {
       try {
         const { data } = await appointmentsAPI.getAll({ limit: 50 })
         const list = data?.appointments || (Array.isArray(data) ? data : [])
-        setAppointments(list.length > 0 ? list : sampleAppointments)
+        setAppointments(list)
       } catch {
-        setAppointments(sampleAppointments)
+        setAppointments([])
       } finally {
         setLoading(false)
       }

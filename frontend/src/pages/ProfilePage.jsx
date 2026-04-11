@@ -67,8 +67,8 @@ export default function ProfilePage() {
 
   const [preferences, setPreferences] = useState({
     language: 'en',
-    timezone: 'America/New_York',
-    dateFormat: 'MM/DD/YYYY',
+    timezone: 'Asia/Colombo',
+    dateFormat: 'DD/MM/YYYY',
     darkMode: true,
     compactView: false,
   });
@@ -474,6 +474,8 @@ export default function ProfilePage() {
                           onChange={(e) => setPreferences(prev => ({ ...prev, timezone: e.target.value }))}
                           className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 [color-scheme:dark]"
                         >
+                          <option value="Asia/Colombo">Sri Lanka Time (SLST)</option>
+                          <option value="Asia/Kolkata">India Time (IST)</option>
                           <option value="America/New_York">Eastern Time (ET)</option>
                           <option value="America/Chicago">Central Time (CT)</option>
                           <option value="America/Denver">Mountain Time (MT)</option>

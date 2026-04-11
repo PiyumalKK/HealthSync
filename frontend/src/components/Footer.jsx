@@ -16,8 +16,8 @@ const footerLinks = {
   ],
   Support: [
     { name: 'Help Center', path: '/contact' },
-    { name: 'Privacy Policy', path: '/' },
-    { name: 'Terms of Service', path: '/' },
+    { name: 'Privacy Policy', path: '/about' },
+    { name: 'Terms of Service', path: '/about' },
     { name: 'FAQ', path: '/contact' },
   ],
 }
@@ -109,9 +109,9 @@ export default function Footer() {
             © 2026 HealthSync. All rights reserved.
           </p>
           <div className="flex items-center space-x-6">
-            <a href="#" className="text-slate-500 hover:text-primary-400 transition-colors text-sm">Privacy</a>
-            <a href="#" className="text-slate-500 hover:text-primary-400 transition-colors text-sm">Terms</a>
-            <a href="#" className="text-slate-500 hover:text-primary-400 transition-colors text-sm">Cookies</a>
+            <Link to="/about" className="text-slate-500 hover:text-primary-400 transition-colors text-sm">Privacy</Link>
+            <Link to="/about" className="text-slate-500 hover:text-primary-400 transition-colors text-sm">Terms</Link>
+            <Link to="/contact" className="text-slate-500 hover:text-primary-400 transition-colors text-sm">Cookies</Link>
           </div>
         </div>
       </div>

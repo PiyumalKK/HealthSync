@@ -88,8 +88,8 @@ export default function LoginPage() {
           >
             {[
               { value: '10K+', label: 'Patients' },
-              { value: '500+', label: 'Doctors' },
-              { value: '50+', label: 'Specialties' },
+              { value: '200+', label: 'Doctors' },
+              { value: '15+', label: 'Specialties' },
             ].map((stat, i) => (
               <div key={i} className="text-center">
                 <p className="text-2xl font-bold text-white">{stat.value}</p>
@@ -177,7 +177,7 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="you@healthsync.lk"
                   required
                   className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
                 />
@@ -265,29 +265,6 @@ export default function LoginPage() {
               Create an account
             </Link>
           </p>
-
-          {/* Demo Credentials */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1 }}
-            className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10"
-          >
-            <p className="text-xs text-white/30 font-medium uppercase tracking-wider mb-2">Demo Credentials</p>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-white/60">demo@healthsync.lk</p>
-                <p className="text-sm text-white/60">Demo@123</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setEmail('demo@healthsync.lk'); setPassword('Demo@123'); }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors"
-              >
-                Fill
-              </button>
-            </div>
-          </motion.div>
         </motion.div>
       </div>
     </div>

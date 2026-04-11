@@ -115,7 +115,7 @@ export default function PrescriptionCreatePage() {
                     name="patientEmail"
                     value={formData.patientEmail}
                     onChange={handleChange}
-                    placeholder="patient@example.com"
+                    placeholder="patient@healthsync.lk"
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                   />
                 </div>

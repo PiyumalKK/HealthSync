@@ -231,8 +231,8 @@ export default function DashboardPage() {
     { id: 4, medication: 'Amoxicillin 250mg', dosage: 'Three times daily', doctor: 'Dilani Silva', refills: 0, active: false },
   ];
 
-  const displayAppointments = appointments.length > 0 ? appointments : mockAppointments;
-  const displayPrescriptions = prescriptions.length > 0 ? prescriptions : mockPrescriptions;
+  const displayAppointments = appointments;
+  const displayPrescriptions = prescriptions;
 
   const greeting = () => {
     const hour = new Date().getHours();

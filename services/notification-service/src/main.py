@@ -101,6 +101,7 @@ async def health():
 
 
 @app.post("/api", response_model=NotificationResponse)
+@app.post("/api/notifications", response_model=NotificationResponse)
 async def create_notification(notif: NotificationCreate):
     title, message = generate_notification_content(notif.type, notif.data)
 
@@ -133,6 +134,7 @@ async def create_notification(notif: NotificationCreate):
 
 
 @app.get("/api")
+@app.get("/api/notifications")
 async def get_notifications(
     recipientEmail: Optional[str] = None,
     status: Optional[str] = None,
@@ -157,6 +159,7 @@ async def get_notifications(
 
 
 @app.get("/api/stats")
+@app.get("/api/notifications/stats")
 async def get_stats():
     total = await db.notifications.count_documents({})
     sent = await db.notifications.count_documents({"status": "sent"})
@@ -165,6 +168,7 @@ async def get_stats():
 
 
 @app.patch("/api/{notif_id}/read")
+@app.patch("/api/notifications/{notif_id}/read")
 async def mark_as_read(notif_id: str):
     try:
         result = await db.notifications.update_one(
