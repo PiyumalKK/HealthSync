@@ -10,7 +10,7 @@ A cloud-native microservices healthcare platform built with Node.js, Python/Fast
 - **Appointment Service** - Booking, rescheduling, cancellation (PostgreSQL)
 - **Prescription Service** - Digital prescriptions, PDF generation (MongoDB)
 - **Notification Service** - Email/SMS/in-app alerts (MongoDB, Python/FastAPI)
-- **Payment Service** - Stripe checkout, payment verification, refunds (MongoDB)
+- **Payment Service** - Stripe checkout, payment verification, refunds (PostgreSQL)
 - **Frontend** - React + Vite + Tailwind CSS
 
 ## Prerequisites
@@ -79,6 +79,21 @@ A cloud-native microservices healthcare platform built with Node.js, Python/Fast
 | MongoDB | 27017 |
 | Redis | 6379 |
 
+## Databases
+
+| Database | Engine | Service Owner | Data Stored |
+|----------|--------|--------------|-------------|
+| `healthsync_auth` | MongoDB | API Gateway | Users, credentials, tokens, OAuth profiles |
+| `healthsync_doctors` | PostgreSQL | Doctor Service | Doctor profiles, specializations, availability |
+| `healthsync_appointments` | PostgreSQL | Appointment Service | Bookings, schedules, status tracking |
+| `healthsync_payments` | PostgreSQL | Payment Service | Stripe transactions, refunds, payment status |
+| `healthsync_patients` | MongoDB | Patient Service | Patient profiles, medical history |
+| `healthsync_prescriptions` | MongoDB | Prescription Service | Digital prescriptions, medications |
+| `healthsync_notifications` | MongoDB | Notification Service | In-app alerts, notification preferences |
+| Redis | Redis | Doctor Service | Doctor data cache (TTL-based) |
+
+> **Pattern:** Database-per-service — each microservice owns its database exclusively. No cross-service DB access.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -87,5 +102,6 @@ A cloud-native microservices healthcare platform built with Node.js, Python/Fast
 | Backend (Node) | Node.js + Express |
 | Backend (Python) | Python + FastAPI |
 | Databases | MongoDB + PostgreSQL |
+| Payments | Stripe (test mode) |
 | Cache | Redis |
 | Container | Docker + Docker Compose |
