@@ -148,4 +148,14 @@ export const reviewsAPI = {
   markHelpful: (id) => api.patch(`/reviews/${id}/helpful`),
 };
 
+// ===================== PAYMENTS API =====================
+export const paymentsAPI = {
+  checkout: (data) => api.post('/payments/checkout', data),
+  getAll: (params) => api.get('/payments', { params }),
+  getById: (id) => api.get(`/payments/${id}`),
+  verify: (sessionId) => api.get(`/payments/verify/${sessionId}`),
+  getStats: () => api.get('/payments/stats'),
+  refund: (id) => api.post(`/payments/${id}/refund`),
+};
+
 export default api;

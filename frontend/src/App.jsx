@@ -22,6 +22,7 @@ import DoctorRegisterPage from './pages/DoctorRegisterPage'
 import PrescriptionCreatePage from './pages/PrescriptionCreatePage'
 import DoctorAvailabilityPage from './pages/DoctorAvailabilityPage'
 import AdminDashboardPage from './pages/AdminDashboardPage'
+import PaymentResultPage from './pages/PaymentResultPage'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '000000000000-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com'
 
@@ -68,6 +69,9 @@ function App() {
           } />
           <Route path="/profile" element={
             <ProtectedRoute><ProfilePage /></ProtectedRoute>
+          } />
+          <Route path="/payment/result" element={
+            <ProtectedRoute><PaymentResultPage /></ProtectedRoute>
           } />
 
           {/* Doctor Routes */}

@@ -70,6 +70,7 @@ services:
       APPOINTMENT_SERVICE_URL: http://appointment-service:3003
       PRESCRIPTION_SERVICE_URL: http://prescription-service:3004
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
+      PAYMENT_SERVICE_URL: http://payment-service:3006
     depends_on:
       mongodb:
         condition: service_healthy
@@ -82,6 +83,8 @@ services:
       prescription-service:
         condition: service_started
       notification-service:
+        condition: service_started
+      payment-service:
         condition: service_started
     networks:
       - healthsync-network
@@ -156,6 +159,28 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
     depends_on:
       mongodb:
+        condition: service_healthy
+    networks:
+      - healthsync-network
+    restart: unless-stopped
+
+  payment-service:
+    build: ./services/payment-service
+    container_name: healthsync-payment-service
+    ports:
+      - "3006:3006"
+    environment:
+      PORT: 3006
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: healthsync_payments
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?Set STRIPE_SECRET_KEY in .env}
+      FRONTEND_URL: http://localhost:3000
+      NOTIFICATION_SERVICE_URL: http://notification-service:3005
+    depends_on:
+      postgres:
         condition: service_healthy
     networks:
       - healthsync-network

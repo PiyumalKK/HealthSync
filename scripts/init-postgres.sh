@@ -2,7 +2,7 @@
 set -e
 
 # Create multiple databases
-for db in healthsync_doctors healthsync_appointments; do
+for db in healthsync_doctors healthsync_appointments healthsync_payments; do
     echo "Creating database: $db"
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
         SELECT 'CREATE DATABASE $db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$db')\gexec
