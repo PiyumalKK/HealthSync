@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { useAuth } from '../contexts/AuthContext'
-import { appointmentsAPI } from '../services/api'
+import { appointmentsAPI, paymentsAPI } from '../services/api'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { Calendar, Clock, User, Stethoscope, Search, Filter, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
@@ -80,6 +80,22 @@ export default function AppointmentsPage() {
     } catch {
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, status: 'cancelled' } : a))
       toast.success('Appointment cancelled successfully')
+    }
+  }
+
+  const handlePayment = async (apt) => {
+    try {
+      const { data } = await paymentsAPI.checkout({
+        appointmentId: apt.id,
+        doctorId: apt.doctorId,
+        doctorName: apt.doctorName,
+        amount: apt.consultationFee || 3000,
+      })
+      if (data.url) {
+        window.location.href = data.url
+      }
+    } catch {
+      toast.error('Failed to initiate payment. Please try again.')
     }
   }
 
@@ -180,12 +196,20 @@ export default function AppointmentsPage() {
                     </div>
                   </div>
                   {(apt.status === 'confirmed' || apt.status === 'pending') && (
-                    <button
-                      onClick={() => handleCancel(apt.id)}
-                      className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"
-                    >
-                      Cancel
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handlePayment(apt)}
+                        className="px-4 py-2 text-sm font-medium text-white bg-accent-500 rounded-xl hover:bg-accent-600 transition-colors"
+                      >
+                        Pay Now
+                      </button>
+                      <button
+                        onClick={() => handleCancel(apt.id)}
+                        className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   )}
                 </div>
               </motion.div>

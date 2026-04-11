@@ -72,6 +72,7 @@ const services = {
   '/api/appointments': process.env.APPOINTMENT_SERVICE_URL || 'http://localhost:3003',
   '/api/prescriptions': process.env.PRESCRIPTION_SERVICE_URL || 'http://localhost:3004',
   '/api/notifications': process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3005',
+  '/api/payments': process.env.PAYMENT_SERVICE_URL || 'http://localhost:3006',
   '/api/reviews': process.env.DOCTOR_SERVICE_URL || 'http://localhost:3002',
 };
 

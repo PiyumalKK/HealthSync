@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { doctorsAPI, appointmentsAPI } from '../services/api'
+import { doctorsAPI, appointmentsAPI, paymentsAPI } from '../services/api'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import toast from 'react-hot-toast'
@@ -145,7 +145,7 @@ export default function DoctorDetailPage() {
     )
   }
 
-  const handleBooking = async () => {
+  const handleBooking = async (withPayment = false) => {
     if (!selectedDate || !selectedTime) {
       toast.error('Please select a date and time slot')
       return
@@ -156,7 +156,7 @@ export default function DoctorDetailPage() {
     }
     setBooking(true)
     try {
-      await appointmentsAPI.create({
+      const { data: appointment } = await appointmentsAPI.create({
         doctorId: doctor.id || id,
         doctorName: `Dr. ${doctor.firstName} ${doctor.lastName}`,
         patientId: user.id,
@@ -166,9 +166,21 @@ export default function DoctorDetailPage() {
         reason: `Consultation with Dr. ${doctor.lastName}`,
         specialization: doctor.specialization,
       })
-      toast.success(`Appointment booked with Dr. ${doctor.lastName} on ${selectedDate} at ${selectedTime}!`)
-      setSelectedDate('')
-      setSelectedTime('')
+
+      if (withPayment) {
+        const { data: payment } = await paymentsAPI.checkout({
+          appointmentId: appointment.id || appointment._id,
+          doctorId: doctor.id || id,
+          doctorName: `Dr. ${doctor.firstName} ${doctor.lastName}`,
+          amount: doctor.consultationFee || 3000,
+        })
+        if (payment.url) {
+          window.location.href = payment.url
+          return
+        }
+      }
+
+      navigate('/appointments')
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to book appointment')
     } finally {
@@ -370,14 +382,23 @@ export default function DoctorDetailPage() {
                 <span className="text-lg font-bold text-slate-800">Rs. {doctor.consultationFee?.toLocaleString()}</span>
               </div>
 
-              {/* Book button */}
-              <button
-                onClick={handleBooking}
-                disabled={booking}
-                className="w-full py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50"
-              >
-                {booking ? 'Booking...' : 'Confirm Booking'}
-              </button>
+              {/* Action buttons */}
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleBooking(true)}
+                  disabled={booking}
+                  className="w-full py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-accent-500 to-accent-600 rounded-xl shadow-lg shadow-accent-500/25 hover:shadow-accent-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50"
+                >
+                  {booking ? 'Processing...' : 'Pay Now & Book'}
+                </button>
+                <button
+                  onClick={() => handleBooking(false)}
+                  disabled={booking}
+                  className="w-full py-3.5 text-sm font-semibold text-primary-600 bg-primary-50 border border-primary-200 rounded-xl hover:bg-primary-100 hover:-translate-y-0.5 transition-all disabled:opacity-50"
+                >
+                  {booking ? 'Processing...' : 'Confirm Booking'}
+                </button>
+              </div>
 
               <p className="text-xs text-slate-400 text-center mt-3">
                 Free cancellation up to 24 hours before

@@ -10,6 +10,7 @@ A cloud-native microservices healthcare platform built with Node.js, Python/Fast
 - **Appointment Service** - Booking, rescheduling, cancellation (PostgreSQL)
 - **Prescription Service** - Digital prescriptions, PDF generation (MongoDB)
 - **Notification Service** - Email/SMS/in-app alerts (MongoDB, Python/FastAPI)
+- **Payment Service** - Stripe checkout, payment verification, refunds (MongoDB)
 - **Frontend** - React + Vite + Tailwind CSS
 
 ## Prerequisites
@@ -40,6 +41,8 @@ A cloud-native microservices healthcare platform built with Node.js, Python/Fast
    | `JWT_REFRESH_SECRET` | Random secret string for signing refresh tokens |
    | `GOOGLE_CLIENT_ID` | OAuth 2.0 Client ID from Google Cloud Console |
    | `POSTGRES_PASSWORD` | Password for the PostgreSQL database |
+   | `STRIPE_SECRET_KEY` | Stripe test secret key (starts with `sk_test_`) |
+   | `STRIPE_PUBLISHABLE_KEY` | Stripe test publishable key (starts with `pk_test_`) |
 
 3. **Start all services**
 
@@ -71,6 +74,7 @@ A cloud-native microservices healthcare platform built with Node.js, Python/Fast
 | Appointment Service | 3003 |
 | Prescription Service | 3004 |
 | Notification Service | 3005 |
+| Payment Service | 3006 |
 | PostgreSQL | 5930 |
 | MongoDB | 27017 |
 | Redis | 6379 |
