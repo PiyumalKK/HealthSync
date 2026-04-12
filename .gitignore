@@ -9,6 +9,11 @@ __pycache__/
 *.pyc
 .venv/
 
+# Scripts (deployment/test helpers — keep init-postgres.sh)
+scripts/*.ps1
+scripts/*.json
+scripts/*.xml
+
 # Project documentation
 HEALTHSYNC_DOCUMENTATION.md
 HEALTHSYNC_FUNCTIONALITIES.md

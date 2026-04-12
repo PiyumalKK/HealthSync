@@ -92,6 +92,20 @@ export const authAPI = {
   getProfile: () => api.get('/auth/me'),
   updateProfile: (data) => api.put('/auth/me', data),
   changePassword: (data) => api.post('/auth/change-password', data),
+  uploadAvatar: (file) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return api.post('/upload/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  uploadCover: (file) => {
+    const formData = new FormData();
+    formData.append('cover', file);
+    return api.post('/upload/cover', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // ===================== DOCTORS API =====================
@@ -107,6 +121,20 @@ export const doctorsAPI = {
   getMyProfile: (userId) => api.get(`/doctors/me/${userId}`),
   updateMyProfile: (userId, data) => api.put(`/doctors/me/${userId}`, data),
   updateMySlots: (userId, slots) => api.put(`/doctors/me/${userId}/slots`, { slots }),
+  uploadAvatar: (file) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return api.post('/upload/doctor/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  uploadCover: (file) => {
+    const formData = new FormData();
+    formData.append('cover', file);
+    return api.post('/upload/doctor/cover', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   // Admin
   adminGetAll: (params) => api.get('/doctors/admin/all', { params }),
   verify: (id) => api.patch(`/doctors/${id}/verify`),

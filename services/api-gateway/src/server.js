@@ -11,17 +11,29 @@ const authMiddleware = require('./middleware/auth');
 const authRouter = require('./routes/auth');
 const googleAuthRouter = require('./routes/googleAuth');
 const userRouter = require('./routes/users');
+const uploadRouter = require('./routes/upload');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+// Trust proxy (required behind Azure Container Apps / APIM reverse proxies)
+app.set('trust proxy', true);
 
 // Security
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
 }));
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.STATIC_WEBSITE_URL,
+  'http://localhost:3000',
+].filter(Boolean);
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -41,11 +53,13 @@ const authLimiter = rateLimit({
   message: { error: 'Too many auth attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
 });
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
   message: { error: 'Too many requests, please try again later.' },
+  validate: { trustProxy: false },
 });
 app.use('/api/auth', authLimiter);
 app.use('/api/', apiLimiter);
@@ -64,6 +78,9 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', jsonParser, authRouter);
 app.use('/api/auth/google', jsonParser, googleAuthRouter);
 app.use('/api/users', jsonParser, authMiddleware, userRouter);
+
+// Upload routes (multipart/form-data — no jsonParser)
+app.use('/api/upload', uploadRouter);
 
 // Proxy configuration
 const services = {
@@ -139,7 +156,7 @@ app.use((err, req, res, next) => {
 // Connect to MongoDB and start
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongodb:27017/healthsync_auth';
 
-mongoose.connect(MONGO_URI)
+mongoose.connect(MONGO_URI, { retryWrites: false })
   .then(() => {
     console.log('📦 Connected to MongoDB (auth)');
     app.listen(PORT, () => {

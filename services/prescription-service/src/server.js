@@ -23,7 +23,7 @@ app.use('/api', prescriptionRoutes);
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongodb:27017/healthsync_prescriptions';
 
-mongoose.connect(MONGO_URI)
+mongoose.connect(MONGO_URI, { retryWrites: false })
   .then(() => {
     console.log('📦 Connected to MongoDB (prescriptions)');
     app.listen(PORT, () => {

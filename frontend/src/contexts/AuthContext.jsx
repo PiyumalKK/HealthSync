@@ -112,6 +112,11 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  const setUserData = useCallback((userData) => {
+    setUser(userData);
+    localStorage.setItem('healthsync_user', JSON.stringify(userData));
+  }, []);
+
   const value = {
     user,
     token,
@@ -122,6 +127,7 @@ export function AuthProvider({ children }) {
     googleLogin,
     logout,
     updateUser,
+    setUserData,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

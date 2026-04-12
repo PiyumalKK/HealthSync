@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Prescription = require('../models/Prescription');
+const { publishEvent } = require('../eventBus');
 
 // Get all prescriptions
 router.get('/', async (req, res) => {
@@ -51,22 +52,15 @@ router.post('/', async (req, res) => {
     const prescription = new Prescription(req.body);
     await prescription.save();
 
-    // Fire notification event (async, non-critical)
-    try {
-      const axios = require('axios');
-      const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3005';
-      await axios.post(`${notificationUrl}/api/notifications`, {
-        type: 'prescription_created',
-        recipientName: req.body.patientName,
-        data: {
-          prescriptionId: prescription._id,
-          doctorName: req.body.doctorName,
-          diagnosis: req.body.diagnosis
-        }
-      }).catch(() => {});
-    } catch {
-      // Non-critical
-    }
+    // Publish event to Service Bus (async, non-blocking)
+    publishEvent('prescription-events', 'prescription.created', {
+      prescriptionId: prescription._id.toString(),
+      patientName: req.body.patientName,
+      patientEmail: req.body.patientEmail,
+      doctorEmail: req.headers['x-user-email'],
+      doctorName: req.body.doctorName,
+      diagnosis: req.body.diagnosis
+    });
 
     res.status(201).json(prescription);
   } catch (err) {

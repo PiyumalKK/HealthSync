@@ -9,7 +9,10 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT || 5432,
     dialect: 'postgres',
     logging: false,
-    pool: { max: 10, min: 2, acquire: 30000, idle: 10000 }
+    pool: { max: 10, min: 2, acquire: 30000, idle: 10000 },
+    ...(process.env.DB_SSL === 'true' && {
+      dialectOptions: { ssl: { require: true, rejectUnauthorized: false } }
+    })
   }
 );
 
@@ -26,6 +29,7 @@ const Doctor = sequelize.define('Doctor', {
   consultationFee: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
   bio: { type: DataTypes.TEXT },
   profileImage: { type: DataTypes.STRING },
+  coverImage: { type: DataTypes.STRING },
   rating: { type: DataTypes.DECIMAL(2, 1), defaultValue: 0 },
   totalReviews: { type: DataTypes.INTEGER, defaultValue: 0 },
   isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true },

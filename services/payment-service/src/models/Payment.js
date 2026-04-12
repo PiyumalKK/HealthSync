@@ -10,6 +10,9 @@ const sequelize = new Sequelize(
     dialect: 'postgres',
     logging: false,
     pool: { max: 10, min: 2, acquire: 30000, idle: 10000 },
+    ...(process.env.DB_SSL === 'true' && {
+      dialectOptions: { ssl: { require: true, rejectUnauthorized: false } }
+    })
   }
 );
 
@@ -21,6 +24,7 @@ const Payment = sequelize.define('Payment', {
   patientEmail: { type: DataTypes.STRING },
   doctorId: { type: DataTypes.STRING, allowNull: false },
   doctorName: { type: DataTypes.STRING, allowNull: false },
+  doctorEmail: { type: DataTypes.STRING },
   amount: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   currency: { type: DataTypes.STRING, defaultValue: 'lkr' },
   stripeSessionId: { type: DataTypes.STRING, unique: true },

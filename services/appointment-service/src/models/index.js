@@ -9,7 +9,10 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT || 5432,
     dialect: 'postgres',
     logging: false,
-    pool: { max: 10, min: 2, acquire: 30000, idle: 10000 }
+    pool: { max: 10, min: 2, acquire: 30000, idle: 10000 },
+    ...(process.env.DB_SSL === 'true' && {
+      dialectOptions: { ssl: { require: true, rejectUnauthorized: false } }
+    })
   }
 );
 
@@ -20,6 +23,7 @@ const Appointment = sequelize.define('Appointment', {
   patientEmail: { type: DataTypes.STRING },
   doctorId: { type: DataTypes.UUID, allowNull: false },
   doctorName: { type: DataTypes.STRING, allowNull: false },
+  doctorEmail: { type: DataTypes.STRING },
   specialization: { type: DataTypes.STRING },
   appointmentDate: { type: DataTypes.DATEONLY, allowNull: false },
   appointmentTime: { type: DataTypes.TIME, allowNull: false },
