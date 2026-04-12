@@ -246,7 +246,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 // Update current user profile
 router.put('/me', authMiddleware, async (req, res) => {
   try {
-    const allowedFields = ['name', 'firstName', 'lastName', 'phone', 'avatar', 'preferences', 'onboardingCompleted'];
+    const allowedFields = ['name', 'firstName', 'lastName', 'phone', 'avatar', 'coverImage', 'preferences', 'onboardingCompleted'];
     const updates = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];

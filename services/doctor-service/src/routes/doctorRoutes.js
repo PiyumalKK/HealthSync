@@ -48,7 +48,7 @@ router.get('/public', async (req, res) => {
 
     const { count, rows } = await Doctor.findAndCountAll({
       where,
-      attributes: ['id', 'firstName', 'lastName', 'specialization', 'qualification', 'experience', 'consultationFee', 'profileImage', 'rating', 'totalReviews', 'bio'],
+      attributes: ['id', 'firstName', 'lastName', 'specialization', 'qualification', 'experience', 'consultationFee', 'profileImage', 'coverImage', 'rating', 'totalReviews', 'bio'],
       include: [{ model: AvailabilitySlot, as: 'slots', where: { isActive: true }, required: false }],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
@@ -88,7 +88,7 @@ router.get('/featured', async (req, res) => {
 
     const doctors = await Doctor.findAll({
       where: { isActive: true, isAvailable: true },
-      attributes: ['id', 'firstName', 'lastName', 'specialization', 'qualification', 'experience', 'consultationFee', 'profileImage', 'rating', 'totalReviews', 'bio'],
+      attributes: ['id', 'firstName', 'lastName', 'specialization', 'qualification', 'experience', 'consultationFee', 'profileImage', 'coverImage', 'rating', 'totalReviews', 'bio'],
       order: [['rating', 'DESC'], ['totalReviews', 'DESC']],
       limit: 8,
     });
@@ -215,7 +215,7 @@ router.put('/me/:userId', async (req, res) => {
     const doctor = await Doctor.findOne({ where: { userId: req.params.userId } });
     if (!doctor) return res.status(404).json({ error: 'Doctor profile not found' });
 
-    const allowedFields = ['specialization', 'hospital', 'experience', 'consultationFee', 'languages', 'qualification', 'bio', 'profileImage', 'licenseNumber'];
+    const allowedFields = ['specialization', 'hospital', 'experience', 'consultationFee', 'languages', 'qualification', 'bio', 'profileImage', 'coverImage', 'licenseNumber'];
     const updates = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];

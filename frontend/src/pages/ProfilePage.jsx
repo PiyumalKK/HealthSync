@@ -28,12 +28,61 @@ function ToggleSwitch({ enabled, onChange }) {
 }
 
 export default function ProfilePage() {
-  const { user, updateUser, logout } = useAuth();
+  const { user, updateUser, setUserData, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
   const fileInputRef = useRef(null);
+  const coverInputRef = useRef(null);
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveMessage('Image must be under 5MB');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+    setAvatarUploading(true);
+    setSaveMessage('');
+    try {
+      const { data } = await authAPI.uploadAvatar(file);
+      setUserData(data.user);
+      setSaveMessage('Profile picture updated!');
+    } catch (err) {
+      setSaveMessage(err.response?.data?.error || 'Failed to upload image');
+    } finally {
+      setAvatarUploading(false);
+      e.target.value = '';
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  };
+
+  const handleCoverChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setSaveMessage('Cover image must be under 10MB');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+    setCoverUploading(true);
+    setSaveMessage('');
+    try {
+      const { data } = await authAPI.uploadCover(file);
+      setUserData(data.user);
+      setSaveMessage('Cover image updated!');
+    } catch (err) {
+      setSaveMessage(err.response?.data?.error || 'Failed to upload cover');
+    } finally {
+      setCoverUploading(false);
+      e.target.value = '';
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  };
 
   const [profileData, setProfileData] = useState({
     name: user?.name || '',
@@ -129,13 +178,30 @@ export default function ProfilePage() {
             className="relative mb-8"
           >
             {/* Banner */}
-            <div className="h-40 rounded-2xl overflow-hidden relative">
+            <div className="h-40 rounded-2xl overflow-hidden relative group cursor-pointer" onClick={() => coverInputRef.current?.click()}>
               <img
-                src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=1200&q=80"
+                src={user?.coverImage || "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=1200&q=80"}
                 alt="Banner"
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/30 to-transparent" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                {coverUploading ? (
+                  <svg className="w-8 h-8 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <div className="flex items-center gap-2 text-white text-sm font-medium">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Change Cover
+                  </div>
+                )}
+              </div>
+              <input type="file" ref={coverInputRef} accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleCoverChange} className="hidden" />
             </div>
 
             {/* Avatar + Info */}
@@ -157,7 +223,15 @@ export default function ProfilePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </button>
-                <input type="file" ref={fileInputRef} accept="image/*" className="hidden" />
+                {avatarUploading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-2xl">
+                    <svg className="w-6 h-6 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  </div>
+                )}
+                <input type="file" ref={fileInputRef} accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleAvatarChange} className="hidden" />
               </div>
               <div className="flex-1">
                 <h1 className="text-2xl font-bold text-white">{user?.name || 'Patient'}</h1>

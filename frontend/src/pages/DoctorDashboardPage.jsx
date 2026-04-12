@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
@@ -26,6 +26,10 @@ export default function DoctorDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [actionLoading, setActionLoading] = useState(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [coverUploading, setCoverUploading] = useState(false)
+  const avatarInputRef = useRef(null)
+  const coverInputRef = useRef(null)
 
   useEffect(() => {
     fetchData()
@@ -85,6 +89,44 @@ export default function DoctorDashboardPage() {
     }
   }
 
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return }
+    setAvatarUploading(true)
+    try {
+      const { data } = await doctorsAPI.uploadAvatar(file)
+      if (doctorProfile) {
+        setDoctorProfile(prev => ({ ...prev, profileImage: data.profileImage }))
+      }
+      toast.success('Profile picture updated!')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to upload')
+    } finally {
+      setAvatarUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleCoverUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) { toast.error('Cover must be under 10MB'); return }
+    setCoverUploading(true)
+    try {
+      const { data } = await doctorsAPI.uploadCover(file)
+      if (doctorProfile) {
+        setDoctorProfile(prev => ({ ...prev, coverImage: data.coverImage }))
+      }
+      toast.success('Cover image updated!')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to upload')
+    } finally {
+      setCoverUploading(false)
+      e.target.value = ''
+    }
+  }
+
   const filtered = filter === 'all' ? appointments : appointments.filter(a => a.status === filter)
   const pendingCount = appointments.filter(a => a.status === 'pending').length
   const confirmedCount = appointments.filter(a => a.status === 'confirmed').length
@@ -135,6 +177,59 @@ export default function DoctorDashboardPage() {
             >
               Register Now
             </Link>
+          </motion.div>
+        )}
+
+        {/* Doctor Profile Card with DP + Cover */}
+        {doctorProfile && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
+            {/* Cover Image */}
+            <div className="h-36 relative group cursor-pointer" onClick={() => coverInputRef.current?.click()}>
+              <img
+                src={doctorProfile.coverImage || 'https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?w=900&h=300&fit=crop'}
+                alt="Cover"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                {coverUploading ? (
+                  <div className="w-8 h-8 border-4 border-white/30 rounded-full animate-spin border-t-white" />
+                ) : (
+                  <span className="text-white text-sm font-medium flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    Change Cover
+                  </span>
+                )}
+              </div>
+              <input type="file" ref={coverInputRef} accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleCoverUpload} className="hidden" />
+            </div>
+            {/* Profile Info */}
+            <div className="px-6 pb-5 flex flex-col sm:flex-row items-start sm:items-end gap-4 -mt-12 relative z-10">
+              <div className="relative group cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
+                <div className="w-24 h-24 rounded-2xl border-4 border-slate-900 overflow-hidden bg-slate-800">
+                  <img
+                    src={doctorProfile.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(doctorProfile.firstName + ' ' + doctorProfile.lastName)}&background=0ea5e9&color=fff&size=200`}
+                    alt={`Dr. ${doctorProfile.firstName}`}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl">
+                  {avatarUploading ? (
+                    <div className="w-6 h-6 border-2 border-white/30 rounded-full animate-spin border-t-white" />
+                  ) : (
+                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  )}
+                </div>
+                <input type="file" ref={avatarInputRef} accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleAvatarUpload} className="hidden" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-white">Dr. {doctorProfile.firstName} {doctorProfile.lastName}</h2>
+                <p className="text-white/50 text-sm">{doctorProfile.specialization} • {doctorProfile.hospital || 'Independent'}</p>
+              </div>
+              {doctorProfile.isVerified && (
+                <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-medium rounded-full border border-emerald-500/30">Verified</span>
+              )}
+            </div>
           </motion.div>
         )}
 

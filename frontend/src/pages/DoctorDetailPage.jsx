@@ -216,9 +216,10 @@ export default function DoctorDetailPage() {
               <div className="relative h-48 bg-gradient-to-br from-primary-500 to-primary-700">
                 <div className="absolute inset-0">
                   <img
-                    src="https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?w=900&h=300&fit=crop"
+                    src={doctor.coverImage || "https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?w=900&h=300&fit=crop"}
                     alt=""
-                    className="w-full h-full object-cover opacity-20"
+                    className="w-full h-full object-cover"
+                    style={{ opacity: doctor.coverImage ? 1 : 0.2 }}
                   />
                 </div>
               </div>

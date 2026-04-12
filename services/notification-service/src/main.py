@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongodb:27017")
-DB_NAME = "healthsync_notifications"
+DB_NAME = os.getenv("DB_NAME", "healthsync_notifications")
 client: Optional[AsyncIOMotorClient] = None
 db = None
 
