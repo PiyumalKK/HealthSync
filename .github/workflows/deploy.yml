@@ -55,10 +55,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: services/api-gateway/package-lock.json
       - name: Install & Test
-        run: cd services/api-gateway && npm ci
+        run: cd services/api-gateway && npm install
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -96,12 +94,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
       - name: Install & Build
         run: |
           cd frontend
-          npm ci
+          npm install
           npm run build
         env:
           VITE_API_URL: https://healthsync-evawa3agamatede4.z01.azurefd.net/api
@@ -131,13 +127,23 @@ jobs:
             --source dist \
             --overwrite \
             --no-progress
-      - name: Purge CDN Cache
+      - name: Purge CDN Cache (async)
         run: |
           az afd endpoint purge \
             --endpoint-name healthsync \
             --profile-name fd-healthsync \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --content-paths "/*" || true
+            --content-paths "/*" \
+            --no-wait || true
+          echo ""
+          echo "=========================================="
+          echo "✅ Frontend deployed! Verify immediately at:"
+          echo "   https://sthealthsyncweb.z13.web.core.windows.net"
+          echo ""
+          echo "⏳ CDN cache purge is running in background."
+          echo "   Front Door URL will update in ~3-10 min:"
+          echo "   https://healthsync-evawa3agamatede4.z01.azurefd.net"
+          echo "=========================================="
 
   # ==================== DOCTOR SERVICE ====================
   build-doctor-service:
@@ -148,10 +154,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: services/doctor-service/package-lock.json
       - name: Install & Test
-        run: cd services/doctor-service && npm ci
+        run: cd services/doctor-service && npm install
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -189,10 +193,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: services/appointment-service/package-lock.json
       - name: Install & Test
-        run: cd services/appointment-service && npm ci
+        run: cd services/appointment-service && npm install
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -230,10 +232,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: services/patient-service/package-lock.json
       - name: Install & Test
-        run: cd services/patient-service && npm ci
+        run: cd services/patient-service && npm install
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -271,10 +271,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: services/prescription-service/package-lock.json
       - name: Install & Test
-        run: cd services/prescription-service && npm ci
+        run: cd services/prescription-service && npm install
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -312,10 +310,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: services/payment-service/package-lock.json
       - name: Install & Test
-        run: cd services/payment-service && npm ci
+        run: cd services/payment-service && npm install
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
