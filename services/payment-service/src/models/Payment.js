@@ -24,6 +24,7 @@ const Payment = sequelize.define('Payment', {
   patientEmail: { type: DataTypes.STRING },
   doctorId: { type: DataTypes.STRING, allowNull: false },
   doctorName: { type: DataTypes.STRING, allowNull: false },
+  doctorEmail: { type: DataTypes.STRING },
   amount: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   currency: { type: DataTypes.STRING, defaultValue: 'lkr' },
   stripeSessionId: { type: DataTypes.STRING, unique: true },

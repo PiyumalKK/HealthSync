@@ -9,7 +9,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 // Create Stripe Checkout session
 router.post('/checkout', async (req, res) => {
   try {
-    const { appointmentId, doctorId, doctorName, amount } = req.body;
+    const { appointmentId, doctorId, doctorName, doctorEmail, amount } = req.body;
     const patientId = req.body.patientId || req.headers['x-user-id'];
     const patientName = req.body.patientName || req.headers['x-user-name'];
     const patientEmail = req.body.patientEmail || req.headers['x-user-email'];
@@ -45,6 +45,7 @@ router.post('/checkout', async (req, res) => {
       patientEmail,
       doctorId,
       doctorName,
+      doctorEmail,
       amount,
       stripeSessionId: session.id,
       status: 'pending',
@@ -137,6 +138,8 @@ router.get('/verify/:sessionId', async (req, res) => {
       try {
         const axios = require('axios');
         const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3005';
+        const amountStr = `Rs. ${Number(payment.amount).toLocaleString()}`;
+        // Notify patient
         await axios.post(`${notificationUrl}/api/notifications`, {
           type: 'payment_received',
           recipientName: payment.patientName,
@@ -144,9 +147,23 @@ router.get('/verify/:sessionId', async (req, res) => {
           data: {
             appointmentId: payment.appointmentId,
             doctorName: payment.doctorName,
-            amount: `Rs. ${Number(payment.amount).toLocaleString()}`,
+            amount: amountStr,
           },
         }).catch(() => {});
+        // Notify doctor
+        if (payment.doctorEmail) {
+          await axios.post(`${notificationUrl}/api/notifications`, {
+            type: 'payment_received_doctor',
+            recipientName: payment.doctorName,
+            recipientEmail: payment.doctorEmail,
+            data: {
+              appointmentId: payment.appointmentId,
+              doctorName: payment.doctorName,
+              patientName: payment.patientName,
+              amount: amountStr,
+            },
+          }).catch(() => {});
+        }
       } catch {
         // Non-critical
       }

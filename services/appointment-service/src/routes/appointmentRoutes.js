@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Appointment } = require('../models');
 const { Op } = require('sequelize');
+const { publishEvent } = require('../eventBus');
 
 // Get all appointments (with filters)
 router.get('/', async (req, res) => {
@@ -90,26 +91,22 @@ router.post('/', async (req, res) => {
       return res.status(409).json({ error: 'This time slot is already booked' });
     }
 
-    const appointment = await Appointment.create(req.body);
+    const appointmentData = {
+      ...req.body,
+      patientEmail: req.body.patientEmail || req.headers['x-user-email'],
+    };
+    const appointment = await Appointment.create(appointmentData);
 
-    // Fire event for notification service (async)
-    try {
-      const axios = require('axios');
-      const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3005';
-      await axios.post(`${notificationUrl}/api/notifications`, {
-        type: 'appointment_booked',
-        recipientEmail: req.body.patientEmail,
-        recipientName: req.body.patientName,
-        data: {
-          appointmentId: appointment.id,
-          doctorName: req.body.doctorName,
-          date: req.body.appointmentDate,
-          time: req.body.appointmentTime
-        }
-      }).catch(() => {}); // Non-critical
-    } catch {
-      // Notification failure is non-critical
-    }
+    // Publish event to Service Bus (async, non-blocking)
+    publishEvent('appointment-events', 'appointment.booked', {
+      appointmentId: appointment.id,
+      patientEmail: appointment.patientEmail || req.headers['x-user-email'],
+      patientName: appointment.patientName,
+      doctorEmail: appointment.doctorEmail,
+      doctorName: appointment.doctorName,
+      date: req.body.appointmentDate,
+      time: req.body.appointmentTime
+    });
 
     res.status(201).json(appointment);
   } catch (err) {
@@ -162,17 +159,16 @@ router.patch('/:id/confirm', async (req, res) => {
 
     await appointment.update({ status: 'confirmed', notes: req.body.notes || appointment.notes });
 
-    // Notify patient
-    try {
-      const axios = require('axios');
-      const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3005';
-      await axios.post(`${notificationUrl}/api/notifications`, {
-        type: 'appointment_booked',
-        recipientEmail: appointment.patientEmail,
-        recipientName: appointment.patientName,
-        data: { appointmentId: appointment.id, doctorName: appointment.doctorName, date: appointment.appointmentDate, time: appointment.appointmentTime }
-      }).catch(() => {});
-    } catch { /* non-critical */ }
+    // Publish event to Service Bus
+    publishEvent('appointment-events', 'appointment.confirmed', {
+      appointmentId: appointment.id,
+      patientEmail: appointment.patientEmail,
+      patientName: appointment.patientName,
+      doctorEmail: appointment.doctorEmail,
+      doctorName: appointment.doctorName,
+      date: appointment.appointmentDate,
+      time: appointment.appointmentTime
+    });
 
     res.json({ message: 'Appointment confirmed', appointment });
   } catch (err) {
@@ -195,16 +191,17 @@ router.patch('/:id/reject', async (req, res) => {
       cancelReason: req.body.reason || 'Rejected by doctor'
     });
 
-    try {
-      const axios = require('axios');
-      const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3005';
-      await axios.post(`${notificationUrl}/api/notifications`, {
-        type: 'appointment_cancelled',
-        recipientEmail: appointment.patientEmail,
-        recipientName: appointment.patientName,
-        data: { appointmentId: appointment.id, doctorName: appointment.doctorName, date: appointment.appointmentDate, time: appointment.appointmentTime }
-      }).catch(() => {});
-    } catch { /* non-critical */ }
+    // Publish event to Service Bus
+    publishEvent('appointment-events', 'appointment.rejected', {
+      appointmentId: appointment.id,
+      patientEmail: appointment.patientEmail,
+      patientName: appointment.patientName,
+      doctorEmail: appointment.doctorEmail,
+      doctorName: appointment.doctorName,
+      date: appointment.appointmentDate,
+      time: appointment.appointmentTime,
+      reason: req.body.reason || 'Rejected by doctor'
+    });
 
     res.json({ message: 'Appointment rejected', appointment });
   } catch (err) {

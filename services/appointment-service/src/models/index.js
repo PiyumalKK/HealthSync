@@ -23,6 +23,7 @@ const Appointment = sequelize.define('Appointment', {
   patientEmail: { type: DataTypes.STRING },
   doctorId: { type: DataTypes.UUID, allowNull: false },
   doctorName: { type: DataTypes.STRING, allowNull: false },
+  doctorEmail: { type: DataTypes.STRING },
   specialization: { type: DataTypes.STRING },
   appointmentDate: { type: DataTypes.DATEONLY, allowNull: false },
   appointmentTime: { type: DataTypes.TIME, allowNull: false },

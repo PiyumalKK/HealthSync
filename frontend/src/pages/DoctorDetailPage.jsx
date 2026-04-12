@@ -159,8 +159,10 @@ export default function DoctorDetailPage() {
       const { data: appointment } = await appointmentsAPI.create({
         doctorId: doctor.id || id,
         doctorName: `Dr. ${doctor.firstName} ${doctor.lastName}`,
+        doctorEmail: doctor.email,
         patientId: user.id,
         patientName: user.name,
+        patientEmail: user.email,
         appointmentDate: selectedDate,
         appointmentTime: selectedTime,
         reason: `Consultation with Dr. ${doctor.lastName}`,
@@ -172,6 +174,7 @@ export default function DoctorDetailPage() {
           appointmentId: appointment.id || appointment._id,
           doctorId: doctor.id || id,
           doctorName: `Dr. ${doctor.firstName} ${doctor.lastName}`,
+          doctorEmail: doctor.email,
           amount: doctor.consultationFee || 3000,
         })
         if (payment.url) {
