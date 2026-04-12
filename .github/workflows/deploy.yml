@@ -127,13 +127,23 @@ jobs:
             --source dist \
             --overwrite \
             --no-progress
-      - name: Purge CDN Cache
+      - name: Purge CDN Cache (async)
         run: |
           az afd endpoint purge \
             --endpoint-name healthsync \
             --profile-name fd-healthsync \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --content-paths "/*" || true
+            --content-paths "/*" \
+            --no-wait || true
+          echo ""
+          echo "=========================================="
+          echo "✅ Frontend deployed! Verify immediately at:"
+          echo "   https://sthealthsyncweb.z13.web.core.windows.net"
+          echo ""
+          echo "⏳ CDN cache purge is running in background."
+          echo "   Front Door URL will update in ~3-10 min:"
+          echo "   https://healthsync-evawa3agamatede4.z01.azurefd.net"
+          echo "=========================================="
 
   # ==================== DOCTOR SERVICE ====================
   build-doctor-service:
