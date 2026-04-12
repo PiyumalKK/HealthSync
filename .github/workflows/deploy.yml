@@ -1,0 +1,387 @@
+name: HealthSync CI/CD Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      api-gateway:
+        description: '🚪 API Gateway'
+        type: boolean
+        default: false
+      frontend:
+        description: '🌐 Frontend'
+        type: boolean
+        default: false
+      doctor-service:
+        description: '🩺 Doctor Service'
+        type: boolean
+        default: false
+      appointment-service:
+        description: '📅 Appointment Service'
+        type: boolean
+        default: false
+      patient-service:
+        description: '🧑‍⚕️ Patient Service'
+        type: boolean
+        default: false
+      prescription-service:
+        description: '💊 Prescription Service'
+        type: boolean
+        default: false
+      payment-service:
+        description: '💳 Payment Service'
+        type: boolean
+        default: false
+      notification-service:
+        description: '🔔 Notification Service'
+        type: boolean
+        default: false
+      deploy-all:
+        description: '🚀 Deploy ALL services'
+        type: boolean
+        default: false
+
+env:
+  ACR_NAME: crhealthsync
+  RESOURCE_GROUP: rg-healthsync-dev
+  STORAGE_ACCOUNT: sthealthsyncweb
+
+jobs:
+  # ==================== API GATEWAY ====================
+  build-api-gateway:
+    if: ${{ github.event.inputs.api-gateway == 'true' || github.event.inputs.deploy-all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/api-gateway/package-lock.json
+      - name: Install & Test
+        run: cd services/api-gateway && npm ci
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR Login
+        run: az acr login --name ${{ env.ACR_NAME }}
+      - name: Build & Push
+        run: |
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/api-gateway:${{ github.sha }} \
+                        -t ${{ env.ACR_NAME }}.azurecr.io/api-gateway:latest \
+                        -f services/api-gateway/Dockerfile services/api-gateway
+          docker push ${{ env.ACR_NAME }}.azurecr.io/api-gateway:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/api-gateway:latest
+
+  deploy-api-gateway:
+    if: ${{ github.event.inputs.api-gateway == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: build-api-gateway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ca-api-gateway \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/api-gateway:${{ github.sha }}
+
+  # ==================== FRONTEND ====================
+  build-frontend:
+    if: ${{ github.event.inputs.frontend == 'true' || github.event.inputs.deploy-all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install & Build
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+        env:
+          VITE_API_URL: https://healthsync-evawa3agamatede4.z01.azurefd.net/api
+          VITE_GOOGLE_CLIENT_ID: 705425992183-15viu19kdnurrlcaqvu09ujid8f9jnod.apps.googleusercontent.com
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+  deploy-frontend:
+    if: ${{ github.event.inputs.frontend == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Upload to Static Website
+        run: |
+          az storage blob upload-batch \
+            --account-name ${{ env.STORAGE_ACCOUNT }} \
+            --destination '$web' \
+            --source dist \
+            --overwrite \
+            --no-progress
+      - name: Purge CDN Cache
+        run: |
+          az afd endpoint purge \
+            --endpoint-name healthsync \
+            --profile-name fd-healthsync \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --content-paths "/*" || true
+
+  # ==================== DOCTOR SERVICE ====================
+  build-doctor-service:
+    if: ${{ github.event.inputs.doctor-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/doctor-service/package-lock.json
+      - name: Install & Test
+        run: cd services/doctor-service && npm ci
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR Login
+        run: az acr login --name ${{ env.ACR_NAME }}
+      - name: Build & Push
+        run: |
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/doctor-service:${{ github.sha }} \
+                        -t ${{ env.ACR_NAME }}.azurecr.io/doctor-service:latest \
+                        -f services/doctor-service/Dockerfile services/doctor-service
+          docker push ${{ env.ACR_NAME }}.azurecr.io/doctor-service:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/doctor-service:latest
+
+  deploy-doctor-service:
+    if: ${{ github.event.inputs.doctor-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: build-doctor-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ca-doctor-service \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/doctor-service:${{ github.sha }}
+
+  # ==================== APPOINTMENT SERVICE ====================
+  build-appointment-service:
+    if: ${{ github.event.inputs.appointment-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/appointment-service/package-lock.json
+      - name: Install & Test
+        run: cd services/appointment-service && npm ci
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR Login
+        run: az acr login --name ${{ env.ACR_NAME }}
+      - name: Build & Push
+        run: |
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/appointment-service:${{ github.sha }} \
+                        -t ${{ env.ACR_NAME }}.azurecr.io/appointment-service:latest \
+                        -f services/appointment-service/Dockerfile services/appointment-service
+          docker push ${{ env.ACR_NAME }}.azurecr.io/appointment-service:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/appointment-service:latest
+
+  deploy-appointment-service:
+    if: ${{ github.event.inputs.appointment-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: build-appointment-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ca-appointment-service \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/appointment-service:${{ github.sha }}
+
+  # ==================== PATIENT SERVICE ====================
+  build-patient-service:
+    if: ${{ github.event.inputs.patient-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/patient-service/package-lock.json
+      - name: Install & Test
+        run: cd services/patient-service && npm ci
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR Login
+        run: az acr login --name ${{ env.ACR_NAME }}
+      - name: Build & Push
+        run: |
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/patient-service:${{ github.sha }} \
+                        -t ${{ env.ACR_NAME }}.azurecr.io/patient-service:latest \
+                        -f services/patient-service/Dockerfile services/patient-service
+          docker push ${{ env.ACR_NAME }}.azurecr.io/patient-service:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/patient-service:latest
+
+  deploy-patient-service:
+    if: ${{ github.event.inputs.patient-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: build-patient-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ca-patient-service \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/patient-service:${{ github.sha }}
+
+  # ==================== PRESCRIPTION SERVICE ====================
+  build-prescription-service:
+    if: ${{ github.event.inputs.prescription-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/prescription-service/package-lock.json
+      - name: Install & Test
+        run: cd services/prescription-service && npm ci
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR Login
+        run: az acr login --name ${{ env.ACR_NAME }}
+      - name: Build & Push
+        run: |
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/healthsync-prescription-service:${{ github.sha }} \
+                        -t ${{ env.ACR_NAME }}.azurecr.io/healthsync-prescription-service:latest \
+                        -f services/prescription-service/Dockerfile services/prescription-service
+          docker push ${{ env.ACR_NAME }}.azurecr.io/healthsync-prescription-service:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/healthsync-prescription-service:latest
+
+  deploy-prescription-service:
+    if: ${{ github.event.inputs.prescription-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: build-prescription-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ca-prescription-service \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/healthsync-prescription-service:${{ github.sha }}
+
+  # ==================== PAYMENT SERVICE ====================
+  build-payment-service:
+    if: ${{ github.event.inputs.payment-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/payment-service/package-lock.json
+      - name: Install & Test
+        run: cd services/payment-service && npm ci
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR Login
+        run: az acr login --name ${{ env.ACR_NAME }}
+      - name: Build & Push
+        run: |
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/payment-service:${{ github.sha }} \
+                        -t ${{ env.ACR_NAME }}.azurecr.io/payment-service:latest \
+                        -f services/payment-service/Dockerfile services/payment-service
+          docker push ${{ env.ACR_NAME }}.azurecr.io/payment-service:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/payment-service:latest
+
+  deploy-payment-service:
+    if: ${{ github.event.inputs.payment-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: build-payment-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ca-payment-service \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/payment-service:${{ github.sha }}
+
+  # ==================== NOTIFICATION SERVICE (Python) ====================
+  build-notification-service:
+    if: ${{ github.event.inputs.notification-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install & Check
+        run: |
+          cd services/notification-service
+          pip install -r requirements.txt
+          python -m py_compile src/main.py
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR Login
+        run: az acr login --name ${{ env.ACR_NAME }}
+      - name: Build & Push
+        run: |
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/notification-service:${{ github.sha }} \
+                        -t ${{ env.ACR_NAME }}.azurecr.io/notification-service:latest \
+                        -f services/notification-service/Dockerfile services/notification-service
+          docker push ${{ env.ACR_NAME }}.azurecr.io/notification-service:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/notification-service:latest
+
+  deploy-notification-service:
+    if: ${{ github.event.inputs.notification-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: build-notification-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ca-notification-service \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/notification-service:${{ github.sha }}
