@@ -116,6 +116,7 @@ Object.entries(services).forEach(([path, target]) => {
     target,
     changeOrigin: true,
     secure: false,
+    followRedirects: true,
     pathRewrite: (reqPath) => {
       // /api/reviews shares the doctor-service which mounts reviews at /api/reviews
       if (path === '/api/reviews') return reqPath;
