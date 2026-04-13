@@ -139,6 +139,11 @@ Object.entries(services).forEach(([path, target]) => {
       delete proxyRes.headers['access-control-allow-credentials'];
       delete proxyRes.headers['access-control-allow-methods'];
       delete proxyRes.headers['access-control-allow-headers'];
+      // Prevent internal redirect URLs from leaking to the browser
+      if (proxyRes.statusCode >= 301 && proxyRes.statusCode <= 308 && proxyRes.headers.location) {
+        delete proxyRes.headers.location;
+        proxyRes.statusCode = 502;
+      }
     },
   }));
 });
