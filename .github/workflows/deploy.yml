@@ -41,9 +41,13 @@ on:
         default: false
 
 env:
-  ACR_NAME: crhealthsync
-  RESOURCE_GROUP: rg-healthsync-dev
-  STORAGE_ACCOUNT: sthealthsyncweb
+  # Old infra:
+  # ACR_NAME: crhealthsync
+  # RESOURCE_GROUP: rg-healthsync-dev
+  # STORAGE_ACCOUNT: sthealthsyncweb
+  ACR_NAME: crhealthsyncc
+  RESOURCE_GROUP: rg-healthsyncc-dev
+  STORAGE_ACCOUNT: sthealthsynccweb
 
 jobs:
   # ==================== API GATEWAY ====================
@@ -100,7 +104,8 @@ jobs:
           npm install
           npm run build
         env:
-          VITE_API_URL: https://healthsync-evawa3agamatede4.z01.azurefd.net/api
+          # Old: VITE_API_URL: https://healthsync-evawa3agamatede4.z01.azurefd.net/api
+          VITE_API_URL: https://healthsync-dev-g4fkf8a2dteza8ab.z01.azurefd.net/api
           VITE_GOOGLE_CLIENT_ID: 705425992183-15viu19kdnurrlcaqvu09ujid8f9jnod.apps.googleusercontent.com
       - uses: actions/upload-artifact@v4
         with:
@@ -129,20 +134,23 @@ jobs:
             --no-progress
       - name: Purge CDN Cache (async)
         run: |
+          # Old: --endpoint-name healthsync --profile-name fd-healthsync
           az afd endpoint purge \
-            --endpoint-name healthsync \
-            --profile-name fd-healthsync \
+            --endpoint-name healthsync-dev \
+            --profile-name fd-healthsyncc \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --content-paths "/*" \
             --no-wait || true
           echo ""
           echo "=========================================="
           echo "✅ Frontend deployed! Verify immediately at:"
-          echo "   https://sthealthsyncweb.z13.web.core.windows.net"
+          # Old: https://sthealthsyncweb.z13.web.core.windows.net
+          echo "   https://sthealthsynccweb.z13.web.core.windows.net"
           echo ""
           echo "⏳ CDN cache purge is running in background."
           echo "   Front Door URL will update in ~3-10 min:"
-          echo "   https://healthsync-evawa3agamatede4.z01.azurefd.net"
+          # Old: https://healthsync-evawa3agamatede4.z01.azurefd.net
+          echo "   https://healthsync-dev-g4fkf8a2dteza8ab.z01.azurefd.net"
           echo "=========================================="
 
   # ==================== DOCTOR SERVICE ====================
