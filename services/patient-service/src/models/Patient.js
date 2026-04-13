@@ -41,5 +41,6 @@ const patientSchema = new mongoose.Schema({
 
 patientSchema.index({ email: 1 });
 patientSchema.index({ userId: 1 });
+patientSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Patient', patientSchema);

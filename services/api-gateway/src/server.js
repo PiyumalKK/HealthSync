@@ -115,6 +115,7 @@ Object.entries(services).forEach(([path, target]) => {
   }, createProxyMiddleware({
     target,
     changeOrigin: true,
+    secure: false,
     pathRewrite: (reqPath) => {
       // /api/reviews shares the doctor-service which mounts reviews at /api/reviews
       if (path === '/api/reviews') return reqPath;
