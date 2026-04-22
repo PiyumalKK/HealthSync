@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+// If served from blob storage, route API calls through Front Door
+const isBlobOrigin = window.location.hostname.endsWith('.web.core.windows.net');
+const API_BASE = isBlobOrigin
+  ? (import.meta.env.VITE_FRONTDOOR_API_URL || '/api')
+  : (import.meta.env.VITE_API_URL || '/api');
 
 const api = axios.create({
   baseURL: API_BASE,

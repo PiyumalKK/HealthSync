@@ -19,3 +19,14 @@ HEALTHSYNC_DOCUMENTATION.md
 HEALTHSYNC_FUNCTIONALITIES.md
 HEALTHSYNC_UX_JOURNEYS.md
 AZURE_DEPLOYMENT_PLAN.md
+
+# LaTeX build artifacts
+report/*.aux
+report/*.log
+report/*.out
+report/*.fdb_latexmk
+report/*.fls
+report/*.synctex.gz
+report/*.toc
+report/*.lof
+report/*.lot
