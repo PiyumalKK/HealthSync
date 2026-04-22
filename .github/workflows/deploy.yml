@@ -51,7 +51,8 @@ env:
 
 jobs:
   # ==================== API GATEWAY ====================
-  build-api-gateway:
+
+  sonar-api-gateway:
     if: ${{ github.event.inputs.api-gateway == 'true' || github.event.inputs.deploy-all == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -59,8 +60,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install & Test
+      - name: Install dependencies
         run: cd services/api-gateway && npm install
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectBaseDir: services/api-gateway
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-api-gateway:
+    if: ${{ github.event.inputs.api-gateway == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: [sonar-api-gateway]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -68,11 +84,11 @@ jobs:
         run: az acr login --name ${{ env.ACR_NAME }}
       - name: Build & Push
         run: |
-          docker build -t ${{ env.ACR_NAME }}.azurecr.io/api-gateway:${{ github.sha }} \
+           docker build -t ${{ env.ACR_NAME }}.azurecr.io/api-gateway:${{ github.sha }} \
                         -t ${{ env.ACR_NAME }}.azurecr.io/api-gateway:latest \
-                        -f services/api-gateway/Dockerfile services/api-gateway
-          docker push ${{ env.ACR_NAME }}.azurecr.io/api-gateway:${{ github.sha }}
-          docker push ${{ env.ACR_NAME }}.azurecr.io/api-gateway:latest
+                         -f services/api-gateway/Dockerfile services/api-gateway
+           docker push ${{ env.ACR_NAME }}.azurecr.io/api-gateway:${{ github.sha }}
+           docker push ${{ env.ACR_NAME }}.azurecr.io/api-gateway:latest
 
   deploy-api-gateway:
     if: ${{ github.event.inputs.api-gateway == 'true' || github.event.inputs.deploy-all == 'true' }}
@@ -89,9 +105,28 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ACR_NAME }}.azurecr.io/api-gateway:${{ github.sha }}
 
-  # ==================== FRONTEND ====================
+ #  ==================== FRONTEND ====================
+
+  sonar-frontend:
+    if: ${{ github.event.inputs.frontend == 'true' || github.event.inputs.deploy-all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectBaseDir: frontend/
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-frontend:
     if: ${{ github.event.inputs.frontend == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: [sonar-frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -154,7 +189,8 @@ jobs:
           echo "=========================================="
 
   # ==================== DOCTOR SERVICE ====================
-  build-doctor-service:
+
+  sonar-doctor-service:
     if: ${{ github.event.inputs.doctor-service == 'true' || github.event.inputs.deploy-all == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -162,8 +198,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install & Test
+      - name: Install dependencies
         run: cd services/doctor-service && npm install
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectBaseDir: services/doctor-service
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-doctor-service:
+    if: ${{ github.event.inputs.doctor-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: [sonar-doctor-service]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -193,7 +244,8 @@ jobs:
             --image ${{ env.ACR_NAME }}.azurecr.io/doctor-service:${{ github.sha }}
 
   # ==================== APPOINTMENT SERVICE ====================
-  build-appointment-service:
+  
+  sonar-appointment-service:
     if: ${{ github.event.inputs.appointment-service == 'true' || github.event.inputs.deploy-all == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -201,8 +253,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install & Test
+      - name: Install dependencies
         run: cd services/appointment-service && npm install
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectBaseDir: services/appointment-service
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-appointment-service:
+    if: ${{ github.event.inputs.appointment-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: [sonar-appointment-service]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -231,8 +298,9 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ACR_NAME }}.azurecr.io/appointment-service:${{ github.sha }}
 
-  # ==================== PATIENT SERVICE ====================
-  build-patient-service:
+  #  ==================== PATIENT SERVICE ====================
+  
+  sonar-patient-service:
     if: ${{ github.event.inputs.patient-service == 'true' || github.event.inputs.deploy-all == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -240,8 +308,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install & Test
+      - name: Install dependencies
         run: cd services/patient-service && npm install
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectBaseDir: services/patient-service
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-patient-service:
+    if: ${{ github.event.inputs.patient-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: [sonar-patient-service]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -270,8 +353,9 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ACR_NAME }}.azurecr.io/patient-service:${{ github.sha }}
 
-  # ==================== PRESCRIPTION SERVICE ====================
-  build-prescription-service:
+  #  ==================== PRESCRIPTION SERVICE ====================
+  
+  sonar-prescription-service:
     if: ${{ github.event.inputs.prescription-service == 'true' || github.event.inputs.deploy-all == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -279,8 +363,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install & Test
+      - name: Install dependencies
         run: cd services/prescription-service && npm install
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectBaseDir: services/prescription-service
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-prescription-service:
+    if: ${{ github.event.inputs.prescription-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: [sonar-prescription-service]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -309,8 +408,9 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ACR_NAME }}.azurecr.io/healthsync-prescription-service:${{ github.sha }}
 
-  # ==================== PAYMENT SERVICE ====================
-  build-payment-service:
+  #  ==================== PAYMENT SERVICE ====================
+
+  sonar-payment-service:
     if: ${{ github.event.inputs.payment-service == 'true' || github.event.inputs.deploy-all == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -318,8 +418,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install & Test
+      - name: Install dependencies
         run: cd services/payment-service && npm install
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectBaseDir: services/payment-service
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+  build-payment-service:
+    if: ${{ github.event.inputs.payment-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: [sonar-payment-service]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -348,8 +463,9 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ACR_NAME }}.azurecr.io/payment-service:${{ github.sha }}
 
-  # ==================== NOTIFICATION SERVICE (Python) ====================
-  build-notification-service:
+  #  ==================== NOTIFICATION SERVICE (Python) ====================
+  
+  sonar-notification-service:
     if: ${{ github.event.inputs.notification-service == 'true' || github.event.inputs.deploy-all == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -357,11 +473,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install & Check
+      - name: Install dependencies
         run: |
           cd services/notification-service
           pip install -r requirements.txt
           python -m py_compile src/main.py
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectBaseDir: services/notification-service
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-notification-service:
+    if: ${{ github.event.inputs.notification-service == 'true' || github.event.inputs.deploy-all == 'true' }}
+    needs: [sonar-notification-service]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -389,3 +520,4 @@ jobs:
             --name ca-notification-service \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ACR_NAME }}.azurecr.io/notification-service:${{ github.sha }}
+
