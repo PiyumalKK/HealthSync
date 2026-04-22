@@ -65,8 +65,7 @@ jobs:
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
         with:
-          args: >
-            -Dsonar.projectBaseDir=services/api-gateway
+          projectBaseDir: services/api-gateway
         continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -84,7 +83,7 @@ jobs:
       - name: ACR Login
         run: az acr login --name ${{ env.ACR_NAME }}
       - name: Build & Push
-         run: |
+        run: |
            docker build -t ${{ env.ACR_NAME }}.azurecr.io/api-gateway:${{ github.sha }} \
                         -t ${{ env.ACR_NAME }}.azurecr.io/api-gateway:latest \
                          -f services/api-gateway/Dockerfile services/api-gateway
