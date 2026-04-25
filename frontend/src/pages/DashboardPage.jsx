@@ -120,6 +120,12 @@ function AppointmentCard({ appointment, index }) {
 }
 
 function PrescriptionCard({ prescription, index }) {
+  const firstMed = prescription.medicines?.[0]
+  const medName = firstMed?.name || prescription.diagnosis || 'Prescription'
+  const medDosage = firstMed?.dosage || (prescription.medicines?.length > 1 ? `${prescription.medicines.length} medications` : '')
+  const isActive = prescription.status === 'active'
+  const doctorName = (prescription.doctorName || '').replace(/^Dr\.?\s*/i, '')
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -135,21 +141,21 @@ function PrescriptionCard({ prescription, index }) {
             </svg>
           </div>
           <div>
-            <p className="text-white font-medium">{prescription.medication}</p>
-            <p className="text-white/40 text-xs">{prescription.dosage}</p>
+            <p className="text-white font-medium">{medName}</p>
+            <p className="text-white/40 text-xs">{medDosage}</p>
           </div>
         </div>
         <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-          prescription.active
+          isActive
             ? 'bg-green-500/20 text-green-400'
             : 'bg-gray-500/20 text-gray-400'
         }`}>
-          {prescription.active ? 'Active' : 'Completed'}
+          {isActive ? 'Active' : 'Completed'}
         </span>
       </div>
       <div className="flex items-center justify-between text-xs text-white/30">
-        <span>Dr. {prescription.doctor}</span>
-        <span>{prescription.refills} refills left</span>
+        <span>Dr. {doctorName}</span>
+        <span>{prescription.medicines?.length || 0} medication{(prescription.medicines?.length || 0) !== 1 ? 's' : ''}</span>
       </div>
     </motion.div>
   );

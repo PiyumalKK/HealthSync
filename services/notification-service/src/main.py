@@ -193,10 +193,20 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
             },
         }
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None, lambda: email_client.begin_send(email_message).result()
-        )
-        print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})")
+        for attempt in range(3):
+            try:
+                result = await loop.run_in_executor(
+                    None, lambda: email_client.begin_send(email_message).result()
+                )
+                print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})")
+                return
+            except Exception as retry_err:
+                if "TooManyRequests" in str(retry_err) and attempt < 2:
+                    wait = (attempt + 1) * 2
+                    print(f"📧 [EMAIL-RETRY] Rate limited, waiting {wait}s (attempt {attempt + 1}/3)")
+                    await asyncio.sleep(wait)
+                else:
+                    raise retry_err
     except Exception as e:
         print(f"📧 [EMAIL-ERROR] Failed to send to {to_email}: {e}")
 
