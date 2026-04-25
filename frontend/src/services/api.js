@@ -171,6 +171,8 @@ export const notificationsAPI = {
   getAll: (params) => api.get('/notifications', { params }),
   getStats: () => api.get('/notifications/stats'),
   markRead: (id) => api.patch(`/notifications/${id}/read`),
+  delete: (id) => api.delete(`/notifications/${id}`),
+  clearAll: () => api.delete('/notifications'),
 };
 
 // ===================== REVIEWS API =====================

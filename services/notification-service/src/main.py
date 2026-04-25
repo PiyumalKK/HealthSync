@@ -439,3 +439,25 @@ async def mark_as_read(notif_id: str):
         return {"message": "Marked as read"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/{notif_id}")
+@app.delete("/api/notifications/{notif_id}")
+async def delete_notification(notif_id: str):
+    try:
+        result = await db.notifications.delete_one({"_id": ObjectId(notif_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Notification not found")
+        return {"message": "Notification deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api")
+@app.delete("/api/notifications")
+async def clear_all_notifications(recipientEmail: Optional[str] = None):
+    query = {}
+    if recipientEmail:
+        query["recipientEmail"] = recipientEmail
+    result = await db.notifications.delete_many(query)
+    return {"message": f"Deleted {result.deleted_count} notifications"}

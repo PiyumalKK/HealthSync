@@ -106,12 +106,14 @@ export default function NotificationsPage() {
     await Promise.allSettled(unread.map(n => notificationsAPI.markRead(n.id || n._id).catch(() => {})));
   };
 
-  const deleteNotification = (id) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+  const deleteNotification = async (id) => {
+    setNotifications(prev => prev.filter(n => (n.id || n._id) !== id));
+    try { await notificationsAPI.delete(id); } catch { /* ignore */ }
   };
 
-  const clearAll = () => {
+  const clearAll = async () => {
     setNotifications([]);
+    try { await notificationsAPI.clearAll(); } catch { /* ignore */ }
   };
 
   return (
