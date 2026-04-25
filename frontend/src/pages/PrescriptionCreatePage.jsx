@@ -35,8 +35,8 @@ export default function PrescriptionCreatePage() {
     const fetchAppointments = async () => {
       try {
         const [confirmedRes, completedRes] = await Promise.all([
-          appointmentsAPI.getAll({ doctorId: user.id, status: 'confirmed', limit: 50 }),
-          appointmentsAPI.getAll({ doctorId: user.id, status: 'completed', limit: 50 }),
+          appointmentsAPI.getAll({ status: 'confirmed', limit: 50 }),
+          appointmentsAPI.getAll({ status: 'completed', limit: 50 }),
         ])
         const confirmed = confirmedRes.data?.appointments || []
         const completed = completedRes.data?.appointments || []
