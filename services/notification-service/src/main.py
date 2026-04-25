@@ -38,6 +38,9 @@ sb_client: Optional[ServiceBusClient] = None
 email_client: Optional[EmailClient] = None
 event_tasks: list = []
 
+# Semaphore to limit concurrent ACS email sends (ACS free tier: ~1 email/min)
+_email_semaphore = asyncio.Semaphore(1)
+
 QUEUES = ["appointment-events", "prescription-events", "doctor-events"]
 
 
@@ -202,21 +205,22 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
         }
         loop = asyncio.get_event_loop()
         max_retries = 5
-        delays = [5, 10, 20, 30]
-        for attempt in range(max_retries):
-            try:
-                result = await loop.run_in_executor(
-                    None, lambda: email_client.begin_send(email_message).result()
-                )
-                print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})")
-                return
-            except Exception as retry_err:
-                if "TooManyRequests" in str(retry_err) and attempt < max_retries - 1:
-                    wait = delays[min(attempt, len(delays) - 1)]
-                    print(f"📧 [EMAIL-RETRY] Rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})")
-                    await asyncio.sleep(wait)
-                else:
-                    raise retry_err
+        delays = [10, 20, 40, 60]
+        async with _email_semaphore:
+            for attempt in range(max_retries):
+                try:
+                    result = await loop.run_in_executor(
+                        None, lambda: email_client.begin_send(email_message).result()
+                    )
+                    print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})")
+                    return
+                except Exception as retry_err:
+                    if "TooManyRequests" in str(retry_err) and attempt < max_retries - 1:
+                        wait = delays[min(attempt, len(delays) - 1)]
+                        print(f"📧 [EMAIL-RETRY] Rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(wait)
+                    else:
+                        raise retry_err
     except Exception as e:
         print(f"📧 [EMAIL-ERROR] Failed to send to {to_email}: {e}")
 
