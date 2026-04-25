@@ -156,18 +156,43 @@ export default function DoctorDetailPage() {
     }
     setBooking(true)
     try {
-      const { data: appointment } = await appointmentsAPI.create({
-        doctorId: doctor.id || id,
-        doctorName: `Dr. ${doctor.firstName} ${doctor.lastName}`,
-        doctorEmail: doctor.email,
-        patientId: user.id,
-        patientName: user.name,
-        patientEmail: user.email,
-        appointmentDate: selectedDate,
-        appointmentTime: selectedTime,
-        reason: `Consultation with Dr. ${doctor.lastName}`,
-        specialization: doctor.specialization,
-      })
+      let appointment
+      try {
+        const { data } = await appointmentsAPI.create({
+          doctorId: doctor.id || id,
+          doctorName: `Dr. ${doctor.firstName} ${doctor.lastName}`,
+          doctorEmail: doctor.email,
+          patientId: user.id,
+          patientName: user.name,
+          patientEmail: user.email,
+          appointmentDate: selectedDate,
+          appointmentTime: selectedTime,
+          reason: `Consultation with Dr. ${doctor.lastName}`,
+          specialization: doctor.specialization,
+        })
+        appointment = data
+      } catch (createErr) {
+        // If slot already booked by this user, find the existing appointment and reuse it
+        if (createErr.response?.status === 409 && withPayment) {
+          const { data: listData } = await appointmentsAPI.getAll({
+            patientId: user.id,
+            status: 'pending',
+            limit: 50,
+          })
+          const existing = (listData?.appointments || []).find(
+            a => a.doctorId === (doctor.id || id) &&
+                 a.appointmentDate === selectedDate &&
+                 a.appointmentTime === selectedTime
+          )
+          if (existing) {
+            appointment = existing
+          } else {
+            throw createErr
+          }
+        } else {
+          throw createErr
+        }
+      }
 
       if (withPayment) {
         const { data: payment } = await paymentsAPI.checkout({

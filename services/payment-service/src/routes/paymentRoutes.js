@@ -123,6 +123,17 @@ router.get('/verify/:sessionId', async (req, res) => {
         paidAt: new Date(),
       });
 
+      // Update appointment status to confirmed (non-critical)
+      try {
+        const axios = require('axios');
+        const appointmentUrl = process.env.APPOINTMENT_SERVICE_URL || 'http://appointment-service:3003';
+        await axios.patch(`${appointmentUrl}/api/${payment.appointmentId}/confirm`, {
+          notes: 'Payment confirmed via Stripe',
+        }).catch(() => {});
+      } catch {
+        // Non-critical
+      }
+
       // Notify (non-critical)
       try {
         const axios = require('axios');

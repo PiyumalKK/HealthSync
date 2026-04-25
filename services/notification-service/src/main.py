@@ -413,6 +413,24 @@ async def create_notification(notif: NotificationCreate):
     title, message = generate_notification_content(notif.type, data_dict)
     now = datetime.utcnow().isoformat()
 
+    # Dedup check: skip if same notification already exists for this recipient
+    dedup = _dedup_key(data_dict)
+    if dedup and notif.recipientEmail:
+        if await _already_notified(notif.type, dedup, notif.recipientEmail):
+            # Return existing notification instead of creating duplicate
+            existing = await db.notifications.find_one({
+                "type": notif.type, "recipientEmail": notif.recipientEmail, "channel": "in-app",
+            })
+            if existing:
+                existing["id"] = str(existing.pop("_id"))
+                return NotificationResponse(
+                    id=existing["id"], type=existing.get("type", notif.type),
+                    recipientEmail=existing.get("recipientEmail"), recipientName=existing.get("recipientName"),
+                    title=existing.get("title", title), message=existing.get("message", message),
+                    status=existing.get("status", "sent"), channel="in-app",
+                    createdAt=existing.get("createdAt", now),
+                )
+
     doc = {
         "type": notif.type,
         "recipientEmail": notif.recipientEmail,
