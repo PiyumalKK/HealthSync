@@ -123,17 +123,8 @@ router.get('/verify/:sessionId', async (req, res) => {
         paidAt: new Date(),
       });
 
-      // Update appointment status to confirmed (non-critical, fire-and-forget)
-      try {
-        const axios = require('axios');
-        const axiosOpts = { timeout: 10000 };
-        const appointmentUrl = process.env.APPOINTMENT_SERVICE_URL || 'http://appointment-service:3003';
-        axios.patch(`${appointmentUrl}/api/${payment.appointmentId}/confirm`, {
-          notes: 'Payment confirmed via Stripe',
-        }, axiosOpts).catch(() => {});
-      } catch {
-        // Non-critical
-      }
+      // NOTE: Do NOT auto-confirm the appointment here.
+      // The appointment stays "pending" until the doctor explicitly confirms it.
 
       // Notify (non-critical, fire-and-forget)
       try {

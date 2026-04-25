@@ -1,7 +1,7 @@
 import os
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +42,11 @@ event_tasks: list = []
 _email_semaphore = asyncio.Semaphore(1)
 
 QUEUES = ["appointment-events", "prescription-events", "doctor-events"]
+
+
+def _utcnow() -> str:
+    """Return current UTC time as ISO string with Z suffix (for correct JS parsing)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 class NotificationData(BaseModel):
@@ -89,8 +94,8 @@ def generate_notification_content(event_type: str, data: dict) -> tuple:
         date = data.get("date", "upcoming")
         time = data.get("time", "")
         return (
-            "Appointment Confirmed",
-            f"Your appointment with {doctor} has been confirmed for {date} at {time}. Please arrive 15 minutes early."
+            "Appointment Booked",
+            f"Your appointment with {doctor} has been booked for {date} at {time}. The doctor will review and confirm shortly."
         )
     elif event_type in ("appointment.confirmed",):
         doctor = _doctor_display(data.get("doctorName", "your doctor"))
@@ -213,6 +218,8 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
                         None, lambda: email_client.begin_send(email_message).result()
                     )
                     print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})")
+                    # Cool-down after successful send to avoid rate-limit on next email
+                    await asyncio.sleep(8)
                     return
                 except Exception as retry_err:
                     if "TooManyRequests" in str(retry_err) and attempt < max_retries - 1:
@@ -250,7 +257,7 @@ async def _already_notified(event_type: str, dedup_key: str, recipient_email: st
 
 async def process_event(event_type: str, data: dict):
     """Process a single event: save to DB + send email. Deduplicates by event key."""
-    now = datetime.utcnow().isoformat()
+    now = _utcnow()
     title, message = generate_notification_content(event_type, data)
     patient_email = data.get("patientEmail") or data.get("recipientEmail")
     patient_name = data.get("patientName") or data.get("recipientName") or "Patient"
@@ -308,6 +315,7 @@ async def process_event(event_type: str, data: dict):
                 "createdAt": now,
             }
             await db.notifications.insert_one(d_doc)
+            print(f"🔔 [DOCTOR-NOTIF] Created '{d_title}' for doctor={doctor_email}")
             async def _bg_doctor():
                 try:
                     await send_email(doctor_email, d_title, doctor_name, d_title, d_message)
@@ -417,7 +425,7 @@ async def shutdown():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "notification-service", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "service": "notification-service", "timestamp": _utcnow()}
 
 
 @app.post("/api", response_model=NotificationResponse)
@@ -425,7 +433,7 @@ async def health():
 async def create_notification(notif: NotificationCreate):
     data_dict = notif.data.dict() if notif.data else {}
     title, message = generate_notification_content(notif.type, data_dict)
-    now = datetime.utcnow().isoformat()
+    now = _utcnow()
 
     # Dedup check: skip if same notification already exists for this recipient
     dedup = _dedup_key(data_dict)
@@ -531,7 +539,7 @@ async def mark_as_read(notif_id: str):
     try:
         result = await db.notifications.update_one(
             {"_id": ObjectId(notif_id)},
-            {"$set": {"status": "read", "readAt": datetime.utcnow().isoformat()}}
+            {"$set": {"status": "read", "readAt": _utcnow()}}
         )
         if result.modified_count == 0:
             raise HTTPException(status_code=404, detail="Notification not found")
