@@ -71,23 +71,31 @@ class NotificationResponse(BaseModel):
     createdAt: str
 
 
+def _doctor_display(name: str) -> str:
+    """Return doctor name with exactly one 'Dr.' prefix."""
+    stripped = name.strip()
+    if stripped.lower().startswith("dr.") or stripped.lower().startswith("dr "):
+        return stripped
+    return f"Dr. {stripped}"
+
+
 def generate_notification_content(event_type: str, data: dict) -> tuple:
     """Generate title and message for PATIENT based on event type."""
     if event_type in ("appointment.booked", "appointment_booked"):
-        doctor = data.get("doctorName", "your doctor")
+        doctor = _doctor_display(data.get("doctorName", "your doctor"))
         date = data.get("date", "upcoming")
         time = data.get("time", "")
         return (
             "Appointment Confirmed",
-            f"Your appointment with Dr. {doctor} has been confirmed for {date} at {time}. Please arrive 15 minutes early."
+            f"Your appointment with {doctor} has been confirmed for {date} at {time}. Please arrive 15 minutes early."
         )
     elif event_type in ("appointment.confirmed",):
-        doctor = data.get("doctorName", "your doctor")
+        doctor = _doctor_display(data.get("doctorName", "your doctor"))
         date = data.get("date", "upcoming")
         time = data.get("time", "")
         return (
             "Appointment Confirmed by Doctor",
-            f"Great news! Dr. {doctor} has confirmed your appointment on {date} at {time}."
+            f"Great news! {doctor} has confirmed your appointment on {date} at {time}."
         )
     elif event_type in ("appointment.rejected", "appointment_cancelled"):
         reason = data.get("reason", "")
@@ -96,17 +104,17 @@ def generate_notification_content(event_type: str, data: dict) -> tuple:
             f"Your appointment has been cancelled. {('Reason: ' + reason) if reason else 'Please rebook at your convenience.'}"
         )
     elif event_type in ("prescription.created", "prescription_created"):
-        doctor = data.get("doctorName", "your doctor")
+        doctor = _doctor_display(data.get("doctorName", "your doctor"))
         return (
             "New Prescription Available",
-            f"Dr. {doctor} has issued a new prescription for you. View it in your HealthSync dashboard."
+            f"{doctor} has issued a new prescription for you. View it in your HealthSync dashboard."
         )
     elif event_type == "payment_received":
-        doctor = data.get("doctorName", "your doctor")
+        doctor = _doctor_display(data.get("doctorName", "your doctor"))
         amount = data.get("amount", "")
         return (
             "Payment Confirmed",
-            f"Your payment of {amount} for consultation with Dr. {doctor} has been confirmed. Thank you!"
+            f"Your payment of {amount} for consultation with {doctor} has been confirmed. Thank you!"
         )
     elif event_type == "payment_received_doctor":
         patient = data.get("patientName", "A patient")
@@ -391,7 +399,7 @@ async def get_notifications(
     page: int = 1,
     limit: int = 20,
 ):
-    query = {}
+    query = {"channel": {"$ne": "email"}}
     if recipientEmail:
         query["recipientEmail"] = recipientEmail
     if status:
@@ -411,10 +419,11 @@ async def get_notifications(
 @app.get("/api/stats")
 @app.get("/api/notifications/stats")
 async def get_stats():
-    total = await db.notifications.count_documents({})
-    sent = await db.notifications.count_documents({"status": "sent"})
-    read = await db.notifications.count_documents({"status": "read"})
-    return {"total": total, "sent": sent, "read": read}
+    base = {"channel": {"$ne": "email"}}
+    total = await db.notifications.count_documents(base)
+    unread = await db.notifications.count_documents({**base, "status": "sent"})
+    read = await db.notifications.count_documents({**base, "status": "read"})
+    return {"total": total, "unread": unread, "sent": unread, "read": read}
 
 
 @app.patch("/api/{notif_id}/read")

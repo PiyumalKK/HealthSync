@@ -100,8 +100,10 @@ export default function NotificationsPage() {
     try { await notificationsAPI.markRead(id); } catch { /* ignore */ }
   };
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
+    const unread = notifications.filter(n => !n.read);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    await Promise.allSettled(unread.map(n => notificationsAPI.markRead(n.id || n._id).catch(() => {})));
   };
 
   const deleteNotification = (id) => {
