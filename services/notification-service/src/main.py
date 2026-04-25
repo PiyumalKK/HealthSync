@@ -345,32 +345,30 @@ async def startup():
     db = client[DB_NAME]
     print("🔔 Connected to MongoDB (notifications)")
 
-    # ── Deduplicate existing in-app notifications on startup ──
+    # ── Deduplicate existing in-app notifications on startup (Cosmos DB compatible) ──
     try:
-        pipeline = [
-            {"$match": {"channel": "in-app"}},
-            {"$group": {
-                "_id": {
-                    "type": "$type",
-                    "recipientEmail": "$recipientEmail",
-                    "prescriptionId": "$data.prescriptionId",
-                    "appointmentId": "$data.appointmentId",
-                },
-                "ids": {"$push": "$_id"},
-                "count": {"$sum": 1},
-            }},
-            {"$match": {"count": {"$gt": 1}}},
-        ]
         duplicates = 0
-        async for group in db.notifications.aggregate(pipeline):
-            # Keep the first, delete the rest
-            to_delete = group["ids"][1:]
-            await db.notifications.delete_many({"_id": {"$in": to_delete}})
-            duplicates += len(to_delete)
+        seen = set()  # (type, recipientEmail, prescriptionId or appointmentId)
+        cursor = db.notifications.find({"channel": "in-app"}).sort("_id", 1)
+        async for doc in cursor:
+            key = (
+                doc.get("type", ""),
+                doc.get("recipientEmail", ""),
+                (doc.get("data") or {}).get("prescriptionId", ""),
+                (doc.get("data") or {}).get("appointmentId", ""),
+            )
+            if key in seen:
+                await db.notifications.delete_one({"_id": doc["_id"]})
+                duplicates += 1
+            else:
+                seen.add(key)
+        # Also remove email-channel duplicates (only in-app should display)
+        email_del = await db.notifications.delete_many({"channel": "email"})
+        duplicates += email_del.deleted_count
         if duplicates:
-            print(f"🧹 Cleaned up {duplicates} duplicate in-app notifications")
+            print(f"🧹 Cleaned up {duplicates} duplicate/email notifications")
     except Exception as e:
-        print(f"🧹 Dedup cleanup skipped: {e}")
+        print(f"🧹 Dedup cleanup error: {e}")
 
     # Initialize ACS Email client
     if ACS_CONNECTION_STRING:
