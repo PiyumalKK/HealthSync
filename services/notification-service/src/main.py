@@ -215,22 +215,33 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
             for attempt in range(max_retries):
                 try:
                     print(f"📧 [EMAIL-SENDING] Attempt {attempt + 1} → {to_email}: {subject}", flush=True)
-                    result = await asyncio.wait_for(
+                    poller = await asyncio.wait_for(
                         loop.run_in_executor(
-                            None, lambda: email_client.begin_send(email_message).result()
+                            None, lambda: email_client.begin_send(email_message)
                         ),
-                        timeout=120,
+                        timeout=30,
                     )
-                    print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})", flush=True)
+                    print(f"📧 [EMAIL-QUEUED] {subject} → {to_email} (status: {poller.status()})", flush=True)
+                    # Wait briefly for delivery confirmation, but don't block forever
+                    try:
+                        result = await asyncio.wait_for(
+                            loop.run_in_executor(None, lambda: poller.result()),
+                            timeout=60,
+                        )
+                        print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})", flush=True)
+                    except (asyncio.TimeoutError, Exception) as poll_err:
+                        print(f"📧 [EMAIL-POLL-SKIP] Delivery poll timed out but email was queued: {poll_err}", flush=True)
                     await asyncio.sleep(8)
                     return
                 except asyncio.TimeoutError:
-                    print(f"📧 [EMAIL-TIMEOUT] Timed out sending to {to_email} (attempt {attempt + 1}/{max_retries})", flush=True)
+                    print(f"📧 [EMAIL-TIMEOUT] begin_send timed out for {to_email} (attempt {attempt + 1}/{max_retries})", flush=True)
                     if attempt >= max_retries - 1:
                         return
                     await asyncio.sleep(delays[min(attempt, len(delays) - 1)])
                 except Exception as retry_err:
-                    if "TooManyRequests" in str(retry_err) and attempt < max_retries - 1:
+                    err_str = str(retry_err)
+                    print(f"📧 [EMAIL-EXCEPTION] {err_str}", flush=True)
+                    if "TooManyRequests" in err_str and attempt < max_retries - 1:
                         wait = delays[min(attempt, len(delays) - 1)]
                         print(f"📧 [EMAIL-RETRY] Rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})", flush=True)
                         await asyncio.sleep(wait)
