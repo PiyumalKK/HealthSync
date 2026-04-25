@@ -118,11 +118,11 @@
 
     % ---- Team details — EDIT THESE ----
     \begin{tabular}{@{}l l}
-        \textbf{Group Members} & : EG/2021/4735 --- Piyumal Ranasinghe \\
-                                & \phantom{: }EG/20XX/XXXX --- Member Two \\
-                                & \phantom{: }EG/20XX/XXXX --- Member Three \\
-                                & \phantom{: }EG/20XX/XXXX --- Member Four \\[0.3cm]
-        \textbf{Date}          & : April 2026 \\
+        \textbf{Group Members} & : EG/2021/4735 --- Ranasinghe K.K.M.P\\
+                                & \phantom{: }EG/2021/4598 --- Karunarathna C.K \\
+                                & \phantom{: }EG/2021/4877 --- Wijesinghe S.A \\
+                                & \phantom{: }EG/2021/4651 --- Madakaladeniya I.U \\[0.3cm]
+        \textbf{Date}          & : 28th April 2026 \\
     \end{tabular}
 
     \vfill
@@ -494,41 +494,58 @@ All 21 Azure resources are defined as \textbf{13 reusable Terraform modules} (re
 \centering
 \resizebox{0.95\textwidth}{!}{%
 \begin{tikzpicture}[
-    stage/.style={rectangle, rounded corners=5pt, draw=azureBlue!60, fill=azureBlue!8,
-                  text width=2.2cm, minimum height=1cm, align=center, font=\scriptsize\bfseries,
+    stage/.style={rectangle, rounded corners=6pt, draw=azureBlue!60, fill=azureBlue!8,
+                  text width=3.2cm, minimum height=1.6cm, align=center, font=\small\bfseries,
                   drop shadow={opacity=0.08}},
-    trigger/.style={rectangle, rounded corners=5pt, draw=azureGreen!60, fill=azureGreen!8,
-                   text width=2.2cm, minimum height=1cm, align=center, font=\scriptsize\bfseries,
+    trigger/.style={rectangle, rounded corners=6pt, draw=azureGreen!60, fill=azureGreen!8,
+                   text width=3.2cm, minimum height=1.6cm, align=center, font=\small\bfseries,
                    drop shadow={opacity=0.08}},
-    arrow/.style={-{Stealth[length=2.2mm]}, thick, color=azureGray!70},
+    sonarbox/.style={rectangle, rounded corners=6pt, draw=orange!60, fill=orange!8,
+                  text width=3.2cm, minimum height=1.6cm, align=center, font=\small\bfseries,
+                  drop shadow={opacity=0.08}},
+    arrow/.style={-{Stealth[length=3mm]}, thick, color=azureGray!70},
 ]
-% Symmetric centered background
-\fill[lightBg, rounded corners=6pt] (-2.8,-2.6) rectangle (10.8,2.4);
-\draw[borderGray, rounded corners=6pt, line width=0.5pt] (-2.8,-2.6) rectangle (10.8,2.4);
-\node[font=\small\bfseries\color{azureDarkBlue}] at (4,1.9) {Application CI/CD Pipeline};
 
-% Backend row
-\node[font=\scriptsize\bfseries\color{azureBlue}] at (-1.5, 0.7) {Backend};
-\node[trigger] (dispatch) at (0.8,0.7) {Dispatch\\{\tiny select service}};
-\node[stage] (build) at (3.6,0.7) {Docker\\Build};
-\node[stage] (push) at (6.2,0.7) {Push ACR\\{\tiny SHA tag}};
-\node[stage] (deploy) at (8.8,0.7) {az update\\{\tiny Container App}};
-\draw[arrow] (dispatch) -- (build);
-\draw[arrow] (build) -- (push);
-\draw[arrow] (push) -- (deploy);
-\node[font=\tiny\itshape, color=azureGray, anchor=south] at (8.8,1.3) {$\times$7 in parallel};
+% Large background rectangle
+\fill[lightBg, rounded corners=10pt] (-3.5,-4.0) rectangle (19.5,3.6);
+\draw[borderGray, rounded corners=10pt, line width=0.6pt] (-3.5,-4.0) rectangle (19.5,3.6);
 
-% Frontend row
-\node[font=\scriptsize\bfseries\color{azureTeal}] at (-1.5,-1) {Frontend};
-\node[stage, fill=azureTeal!8, draw=azureTeal!60] (fbuild) at (3.6,-1) {Vite Build\\{\tiny npm run build}};
-\node[stage, fill=azureTeal!8, draw=azureTeal!60] (fupload) at (6.2,-1) {Upload to\\Blob \$web};
-\node[stage, fill=azureTeal!8, draw=azureTeal!60] (fpurge) at (8.8,-1) {CDN Purge\\{\tiny Front Door}};
-\draw[arrow, azureTeal!70] (dispatch) |- (fbuild);
-\draw[arrow, azureTeal!70] (fbuild) -- (fupload);
-\draw[arrow, azureTeal!70] (fupload) -- (fpurge);
+\node[font=\large\bfseries\color{azureDarkBlue}] at (7.8,3.0) {Application CI/CD Pipeline};
+
+% ── Backend row ──────────────────────────────────────────────
+\node[font=\normalsize\bfseries\color{azureBlue}] at (-1.8, 0.8) {Backend};
+
+\node[trigger]  (dispatch) at (1.2,  0.8) {Dispatch\\{\footnotesize select service}};
+\node[sonarbox] (sonar)    at (4.8,  0.8) {Sonar\\{\footnotesize Code Scan}};
+\node[stage]    (build)    at (8.4,  0.8) {Docker\\Build};
+\node[stage]    (push)     at (12.0, 0.8) {Push ACR\\{\footnotesize SHA tag}};
+\node[stage]    (deploy)   at (15.6, 0.8) {az update\\{\footnotesize Container App}};
+
+\draw[arrow] (dispatch.east) -- (sonar.west);
+\draw[arrow] (sonar.east)    -- (build.west);
+\draw[arrow] (build.east)    -- (push.west);
+\draw[arrow] (push.east)     -- (deploy.west);
+
+\node[font=\footnotesize\itshape, color=azureGray, anchor=south] at (15.6,1.8) {$\times$7 in parallel};
+
+% ── Frontend row ─────────────────────────────────────────────
+\node[font=\normalsize\bfseries\color{azureTeal}] at (-1.8,-2.0) {Frontend};
+
+\node[stage, fill=azureTeal!8, draw=azureTeal!60] (fbuild)  at (8.4, -2.0) {Vite Build\\{\footnotesize npm run build}};
+\node[stage, fill=azureTeal!8, draw=azureTeal!60] (fupload) at (12.0,-2.0) {Upload to\\{\footnotesize Blob \$web}};
+\node[stage, fill=azureTeal!8, draw=azureTeal!60] (fpurge)  at (15.6,-2.0) {CDN Purge\\{\footnotesize Front Door}};
+
+% Sonar forks cleanly down then across to fbuild
+\draw[arrow, color=azureTeal!70]
+    (sonar.south) -- ++(0,-0.9) -| (fbuild.west);
+
+\draw[arrow, color=azureTeal!70] (fbuild.east)  -- (fupload.west);
+\draw[arrow, color=azureTeal!70] (fupload.east) -- (fpurge.west);
+
 \end{tikzpicture}
 }
-\caption{Application pipeline: per-service Docker build, ACR push, Container App update. Frontend uploads to Blob Storage.}
+\caption{Application pipeline: per-service Docker build, ACR push, Container App update.
+Sonar code scan runs after dispatch for both Backend and Frontend. Frontend uploads to Blob Storage.}
 \label{fig:app-pipeline}
 \end{figure}
 
@@ -540,6 +557,7 @@ All 21 Azure resources are defined as \textbf{13 reusable Terraform modules} (re
     \item \textbf{Authorization:} RBAC (patient, doctor, admin) enforced at gateway. Helmet.js headers (HSTS, CSP).
     \item \textbf{Secrets management:} 16 secrets in Key Vault (RBAC mode); Managed Identity reads at startup---zero passwords in code.
     \item \textbf{Transport encryption:} TLS everywhere: Front Door HTTPS, PG SSL, Redis 6380/TLS, Cosmos SSL, AMQPS. Rate limiting (50/15min auth, 500 API).
+    \item \textbf{Code Quality Scanning:} SonarCloud analysis per microservice in CI/CD pipelines to detect bugs, code smells, and security vulnerabilities before deployment.
 \end{enumerate}
 
 \subsection{Scalability \& High Availability}
