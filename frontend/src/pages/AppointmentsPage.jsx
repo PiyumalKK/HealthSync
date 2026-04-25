@@ -46,6 +46,7 @@ export default function AppointmentsPage() {
   const { user } = useAuth()
   const [filter, setFilter] = useState('all')
   const [appointments, setAppointments] = useState([])
+  const [paidAppointmentIds, setPaidAppointmentIds] = useState(new Set())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -54,6 +55,15 @@ export default function AppointmentsPage() {
         const { data } = await appointmentsAPI.getAll({ limit: 50 })
         const list = data?.appointments || (Array.isArray(data) ? data : [])
         setAppointments(list)
+
+        // Fetch completed payments to know which appointments are already paid
+        try {
+          const { data: payData } = await paymentsAPI.getAll({ status: 'completed', limit: 100 })
+          const payments = payData?.payments || []
+          setPaidAppointmentIds(new Set(payments.map(p => p.appointmentId)))
+        } catch {
+          // If payments fetch fails, don't block — just show Pay Now for all
+        }
       } catch {
         setAppointments([])
       } finally {
@@ -197,12 +207,19 @@ export default function AppointmentsPage() {
                   </div>
                   {(apt.status === 'confirmed' || apt.status === 'pending') && (
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => handlePayment(apt)}
-                        className="px-4 py-2 text-sm font-medium text-white bg-accent-500 rounded-xl hover:bg-accent-600 transition-colors"
-                      >
-                        Pay Now
-                      </button>
+                      {!paidAppointmentIds.has(apt.id) && (
+                        <button
+                          onClick={() => handlePayment(apt)}
+                          className="px-4 py-2 text-sm font-medium text-white bg-accent-500 rounded-xl hover:bg-accent-600 transition-colors"
+                        >
+                          Pay Now
+                        </button>
+                      )}
+                      {paidAppointmentIds.has(apt.id) && (
+                        <span className="px-4 py-2 text-sm font-medium text-accent-700 bg-accent-50 rounded-xl border border-accent-200">
+                          ✓ Paid
+                        </span>
+                      )}
                       <button
                         onClick={() => handleCancel(apt.id)}
                         className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"

@@ -107,17 +107,6 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// Get payment by ID
-router.get('/:id', async (req, res) => {
-  try {
-    const payment = await Payment.findByPk(req.params.id);
-    if (!payment) return res.status(404).json({ error: 'Payment not found' });
-    res.json(payment);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Verify payment status (called by frontend after redirect)
 router.get('/verify/:sessionId', async (req, res) => {
   try {
@@ -134,13 +123,17 @@ router.get('/verify/:sessionId', async (req, res) => {
         paidAt: new Date(),
       });
 
-      // Notify (non-critical)
+      // NOTE: Do NOT auto-confirm the appointment here.
+      // The appointment stays "pending" until the doctor explicitly confirms it.
+
+      // Notify (non-critical, fire-and-forget)
       try {
         const axios = require('axios');
+        const axiosOpts = { timeout: 10000 };
         const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3005';
         const amountStr = `Rs. ${Number(payment.amount).toLocaleString()}`;
         // Notify patient
-        await axios.post(`${notificationUrl}/api/notifications`, {
+        axios.post(`${notificationUrl}/api/notifications`, {
           type: 'payment_received',
           recipientName: payment.patientName,
           recipientEmail: payment.patientEmail,
@@ -149,10 +142,10 @@ router.get('/verify/:sessionId', async (req, res) => {
             doctorName: payment.doctorName,
             amount: amountStr,
           },
-        }).catch(() => {});
+        }, axiosOpts).catch(() => {});
         // Notify doctor
         if (payment.doctorEmail) {
-          await axios.post(`${notificationUrl}/api/notifications`, {
+          axios.post(`${notificationUrl}/api/notifications`, {
             type: 'payment_received_doctor',
             recipientName: payment.doctorName,
             recipientEmail: payment.doctorEmail,
@@ -162,7 +155,7 @@ router.get('/verify/:sessionId', async (req, res) => {
               patientName: payment.patientName,
               amount: amountStr,
             },
-          }).catch(() => {});
+          }, axiosOpts).catch(() => {});
         }
       } catch {
         // Non-critical
@@ -170,6 +163,17 @@ router.get('/verify/:sessionId', async (req, res) => {
     }
 
     res.json({ payment });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get payment by ID (must be after /stats and /verify to avoid catching those)
+router.get('/:id', async (req, res) => {
+  try {
+    const payment = await Payment.findByPk(req.params.id);
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    res.json(payment);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

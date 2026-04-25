@@ -13,6 +13,7 @@ __pycache__/
 scripts/*.ps1
 scripts/*.json
 scripts/*.xml
+scripts/*.py
 
 # Project documentation
 HEALTHSYNC_DOCUMENTATION.md
@@ -30,3 +31,7 @@ report/*.synctex.gz
 report/*.toc
 report/*.lof
 report/*.lot
+
+# Report PDFs & demo files
+report/demo_script.*
+report/video_script.*

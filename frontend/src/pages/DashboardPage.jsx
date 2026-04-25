@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
-import { appointmentsAPI, prescriptionsAPI, notificationsAPI } from '../services/api';
+import { appointmentsAPI, prescriptionsAPI, notificationsAPI, doctorsAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
@@ -90,7 +90,17 @@ function AppointmentCard({ appointment, index }) {
     confirmed: 'bg-green-500/20 text-green-400 border-green-500/30',
     pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
     completed: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+    cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
   };
+
+  const doctorName = appointment.doctorName || 'Doctor';
+  const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(doctorName.replace(/^Dr\.?\s*/i, ''))}&background=0ea5e9&color=fff&size=96`;
+  const displayDate = appointment.appointmentDate
+    ? format(new Date(appointment.appointmentDate + 'T00:00:00'), 'MMM d, yyyy')
+    : appointment.date || '';
+  const displayTime = appointment.appointmentTime
+    ? appointment.appointmentTime.substring(0, 5)
+    : appointment.time || '';
 
   return (
     <motion.div
@@ -100,17 +110,17 @@ function AppointmentCard({ appointment, index }) {
       className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/[0.07] transition-all"
     >
       <img
-        src={appointment.doctorImage}
-        alt={appointment.doctorName}
+        src={appointment.doctorImage || fallbackAvatar}
+        alt={doctorName}
         className="w-12 h-12 rounded-xl object-cover"
       />
       <div className="flex-1 min-w-0">
-        <p className="text-white font-medium truncate">{appointment.doctorName}</p>
-        <p className="text-white/40 text-sm">{appointment.specialty}</p>
+        <p className="text-white font-medium truncate">{doctorName}</p>
+        <p className="text-white/40 text-sm">{appointment.specialization || appointment.specialty || ''}</p>
       </div>
       <div className="text-right">
-        <p className="text-white/80 text-sm font-medium">{appointment.date}</p>
-        <p className="text-white/40 text-xs">{appointment.time}</p>
+        <p className="text-white/80 text-sm font-medium">{displayDate}</p>
+        <p className="text-white/40 text-xs">{displayTime}</p>
       </div>
       <span className={`px-3 py-1 rounded-full text-xs font-medium border ${statusColors[appointment.status] || statusColors.pending}`}>
         {appointment.status}
@@ -120,6 +130,12 @@ function AppointmentCard({ appointment, index }) {
 }
 
 function PrescriptionCard({ prescription, index }) {
+  const firstMed = prescription.medicines?.[0]
+  const medName = firstMed?.name || prescription.diagnosis || 'Prescription'
+  const medDosage = firstMed?.dosage || (prescription.medicines?.length > 1 ? `${prescription.medicines.length} medications` : '')
+  const isActive = prescription.status === 'active'
+  const doctorName = (prescription.doctorName || '').replace(/^Dr\.?\s*/i, '')
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -135,21 +151,21 @@ function PrescriptionCard({ prescription, index }) {
             </svg>
           </div>
           <div>
-            <p className="text-white font-medium">{prescription.medication}</p>
-            <p className="text-white/40 text-xs">{prescription.dosage}</p>
+            <p className="text-white font-medium">{medName}</p>
+            <p className="text-white/40 text-xs">{medDosage}</p>
           </div>
         </div>
         <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-          prescription.active
+          isActive
             ? 'bg-green-500/20 text-green-400'
             : 'bg-gray-500/20 text-gray-400'
         }`}>
-          {prescription.active ? 'Active' : 'Completed'}
+          {isActive ? 'Active' : 'Completed'}
         </span>
       </div>
       <div className="flex items-center justify-between text-xs text-white/30">
-        <span>Dr. {prescription.doctor}</span>
-        <span>{prescription.refills} refills left</span>
+        <span>Dr. {doctorName}</span>
+        <span>{prescription.medicines?.length || 0} medication{(prescription.medicines?.length || 0) !== 1 ? 's' : ''}</span>
       </div>
     </motion.div>
   );
@@ -160,29 +176,58 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [appointments, setAppointments] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
-  const [notifications, setNotifications] = useState([]);
+  const [stats, setStats] = useState({ upcomingAppts: 0, activePrescriptions: 0, unreadNotifs: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const [apptRes, rxRes, notifRes] = await Promise.allSettled([
-          appointmentsAPI.getAll(),
-          prescriptionsAPI.getAll(),
-          notificationsAPI.getAll(),
+          appointmentsAPI.getAll({ limit: 50 }),
+          prescriptionsAPI.getAll({ limit: 50 }),
+          notificationsAPI.getStats(user?.email),
         ]);
 
-        if (apptRes.status === 'fulfilled') setAppointments(apptRes.value.data?.appointments?.slice(0, 5) || []);
-        if (rxRes.status === 'fulfilled') setPrescriptions(rxRes.value.data?.prescriptions?.slice(0, 5) || []);
-        if (notifRes.status === 'fulfilled') setNotifications(notifRes.value.data?.notifications?.slice(0, 5) || []);
+        if (apptRes.status === 'fulfilled') {
+          const allAppts = apptRes.value.data?.appointments || [];
+          const upcoming = allAppts.filter(a => ['pending', 'confirmed'].includes(a.status)).length;
+          setStats(prev => ({ ...prev, upcomingAppts: upcoming }));
+
+          // Fetch doctor profile images
+          const top5 = allAppts.slice(0, 5);
+          const uniqueDoctorIds = [...new Set(top5.map(a => a.doctorId).filter(Boolean))];
+          const doctorImages = {};
+          await Promise.allSettled(
+            uniqueDoctorIds.map(async (docId) => {
+              const res = await doctorsAPI.getById(docId);
+              const doc = res.data;
+              if (doc?.profileImage) doctorImages[docId] = doc.profileImage;
+            })
+          );
+          const enriched = top5.map(a => ({
+            ...a,
+            doctorImage: doctorImages[a.doctorId] || null,
+          }));
+          setAppointments(enriched);
+        }
+        if (rxRes.status === 'fulfilled') {
+          const allRx = rxRes.value.data?.prescriptions || [];
+          setPrescriptions(allRx.slice(0, 5));
+          const active = allRx.filter(r => r.status === 'active').length;
+          setStats(prev => ({ ...prev, activePrescriptions: active || allRx.length }));
+        }
+        if (notifRes.status === 'fulfilled') {
+          const notifData = notifRes.value.data;
+          setStats(prev => ({ ...prev, unreadNotifs: notifData?.unread || 0 }));
+        }
       } catch {
-        // Use mock data fallback
+        // Use defaults
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, []);
+  }, [user?.email]);
 
   // Fallback data for demo
   const mockAppointments = [
@@ -293,7 +338,7 @@ export default function DashboardPage() {
                 <svg className="w-5 h-5 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] font-bold text-white flex items-center justify-center">{notifications.length || ''}</span>
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] font-bold text-white flex items-center justify-center">{stats.unreadNotifs || ''}</span>
               </button>
             </div>
           </motion.div>
@@ -332,32 +377,32 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
                   <StatCard
                     title="Upcoming Appointments"
-                    value="4"
-                    change={12}
+                    value={stats.upcomingAppts}
+                    change={0}
                     delay={0.1}
                     color="bg-cyan-500"
                     icon={<svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
                   />
                   <StatCard
                     title="Active Prescriptions"
-                    value="3"
-                    change={-5}
+                    value={stats.activePrescriptions}
+                    change={0}
                     delay={0.2}
                     color="bg-purple-500"
                     icon={<svg className="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
                   />
                   <StatCard
-                    title="Health Score"
-                    value="87"
-                    change={8}
+                    title="Total Appointments"
+                    value={appointments.length}
+                    change={0}
                     delay={0.3}
                     color="bg-green-500"
-                    icon={<svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>}
+                    icon={<svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>}
                   />
                   <StatCard
                     title="Unread Notifications"
-                    value="7"
-                    change={15}
+                    value={stats.unreadNotifs}
+                    change={0}
                     delay={0.4}
                     color="bg-orange-500"
                     icon={<svg className="w-6 h-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>}

@@ -1,7 +1,7 @@
 import os
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,8 +9,12 @@ from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from azure.servicebus.aio import ServiceBusClient
-from azure.communication.email import EmailClient
 from jinja2 import Environment, BaseLoader
+import httpx
+import hashlib
+import hmac
+import base64
+from urllib.parse import urlparse
 
 app = FastAPI(title="HealthSync Notification Service", version="2.0.0")
 
@@ -35,10 +39,19 @@ ACS_SENDER_EMAIL = os.getenv("ACS_SENDER_EMAIL", "healthsync@15904a49-17e2-4535-
 client: Optional[AsyncIOMotorClient] = None
 db = None
 sb_client: Optional[ServiceBusClient] = None
-email_client: Optional[EmailClient] = None
+_acs_endpoint: Optional[str] = None
+_acs_access_key: Optional[str] = None
 event_tasks: list = []
 
+# Semaphore to limit concurrent ACS email sends (ACS free tier: ~1 email/min)
+_email_semaphore = asyncio.Semaphore(1)
+
 QUEUES = ["appointment-events", "prescription-events", "doctor-events"]
+
+
+def _utcnow() -> str:
+    """Return current UTC time as ISO string with Z suffix (for correct JS parsing)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 class NotificationData(BaseModel):
@@ -71,23 +84,31 @@ class NotificationResponse(BaseModel):
     createdAt: str
 
 
+def _doctor_display(name: str) -> str:
+    """Return doctor name with exactly one 'Dr.' prefix."""
+    stripped = name.strip()
+    if stripped.lower().startswith("dr.") or stripped.lower().startswith("dr "):
+        return stripped
+    return f"Dr. {stripped}"
+
+
 def generate_notification_content(event_type: str, data: dict) -> tuple:
     """Generate title and message for PATIENT based on event type."""
     if event_type in ("appointment.booked", "appointment_booked"):
-        doctor = data.get("doctorName", "your doctor")
+        doctor = _doctor_display(data.get("doctorName", "your doctor"))
         date = data.get("date", "upcoming")
         time = data.get("time", "")
         return (
-            "Appointment Confirmed",
-            f"Your appointment with Dr. {doctor} has been confirmed for {date} at {time}. Please arrive 15 minutes early."
+            "Appointment Booked",
+            f"Your appointment with {doctor} has been booked for {date} at {time}. The doctor will review and confirm shortly."
         )
     elif event_type in ("appointment.confirmed",):
-        doctor = data.get("doctorName", "your doctor")
+        doctor = _doctor_display(data.get("doctorName", "your doctor"))
         date = data.get("date", "upcoming")
         time = data.get("time", "")
         return (
             "Appointment Confirmed by Doctor",
-            f"Great news! Dr. {doctor} has confirmed your appointment on {date} at {time}."
+            f"Great news! {doctor} has confirmed your appointment on {date} at {time}."
         )
     elif event_type in ("appointment.rejected", "appointment_cancelled"):
         reason = data.get("reason", "")
@@ -96,17 +117,17 @@ def generate_notification_content(event_type: str, data: dict) -> tuple:
             f"Your appointment has been cancelled. {('Reason: ' + reason) if reason else 'Please rebook at your convenience.'}"
         )
     elif event_type in ("prescription.created", "prescription_created"):
-        doctor = data.get("doctorName", "your doctor")
+        doctor = _doctor_display(data.get("doctorName", "your doctor"))
         return (
             "New Prescription Available",
-            f"Dr. {doctor} has issued a new prescription for you. View it in your HealthSync dashboard."
+            f"{doctor} has issued a new prescription for you. View it in your HealthSync dashboard."
         )
     elif event_type == "payment_received":
-        doctor = data.get("doctorName", "your doctor")
+        doctor = _doctor_display(data.get("doctorName", "your doctor"))
         amount = data.get("amount", "")
         return (
             "Payment Confirmed",
-            f"Your payment of {amount} for consultation with Dr. {doctor} has been confirmed. Thank you!"
+            f"Your payment of {amount} for consultation with {doctor} has been confirmed. Thank you!"
         )
     elif event_type == "payment_received_doctor":
         patient = data.get("patientName", "A patient")
@@ -173,15 +194,48 @@ jinja_env = Environment(loader=BaseLoader())
 email_tmpl = jinja_env.from_string(EMAIL_TEMPLATE)
 
 
+def _parse_acs_connection_string(conn_str: str):
+    """Parse ACS connection string into endpoint and access key."""
+    parts = {}
+    for part in conn_str.split(";"):
+        if "=" in part:
+            key, val = part.split("=", 1)
+            parts[key.strip()] = val.strip()
+    endpoint = parts.get("endpoint", "").rstrip("/")
+    access_key = parts.get("accesskey", "")
+    return endpoint, access_key
+
+
+def _acs_auth_headers(endpoint: str, access_key: str, method: str, url_path: str, body: str) -> dict:
+    """Generate HMAC-SHA256 auth headers for ACS REST API."""
+    import uuid as _uuid
+    parsed = urlparse(endpoint)
+    host = parsed.hostname
+    content_hash = base64.b64encode(hashlib.sha256(body.encode("utf-8")).digest()).decode("utf-8")
+    timestamp = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    string_to_sign = f"{method}\n{url_path}\n{timestamp};{host};{content_hash}"
+    signature = base64.b64encode(
+        hmac.new(base64.b64decode(access_key), string_to_sign.encode("utf-8"), hashlib.sha256).digest()
+    ).decode("utf-8")
+    return {
+        "x-ms-date": timestamp,
+        "x-ms-content-sha256": content_hash,
+        "Authorization": f"HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature={signature}",
+        "Content-Type": "application/json",
+        "Repeatability-Request-ID": str(_uuid.uuid4()),
+        "Repeatability-First-Sent": timestamp,
+    }
+
+
 async def send_email(to_email: str, subject: str, name: str, title: str, message: str):
-    """Send email notification via Azure Communication Services Email."""
-    if not email_client:
-        print(f"📧 [EMAIL-SKIP] No ACS Email configured. Would send to {to_email}: {subject}")
+    """Send email via ACS REST API directly (no SDK poller)."""
+    if not _acs_endpoint or not _acs_access_key:
+        print(f"📧 [EMAIL-SKIP] No ACS configured. Would send to {to_email}: {subject}", flush=True)
         return
 
     try:
         html = email_tmpl.render(title=title, name=name, message=message)
-        email_message = {
+        payload = json.dumps({
             "senderAddress": ACS_SENDER_EMAIL,
             "recipients": {
                 "to": [{"address": to_email, "displayName": name}]
@@ -191,69 +245,143 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
                 "plainText": message,
                 "html": html,
             },
-        }
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None, lambda: email_client.begin_send(email_message).result()
-        )
-        print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})")
+        })
+
+        url_path = "/emails:send?api-version=2023-03-31"
+        url = f"{_acs_endpoint}{url_path}"
+        max_retries = 5
+        delays = [10, 20, 40, 60]
+
+        async with _email_semaphore:
+            for attempt in range(max_retries):
+                try:
+                    print(f"📧 [EMAIL-SENDING] Attempt {attempt + 1} → {to_email}: {subject}", flush=True)
+                    headers = _acs_auth_headers(_acs_endpoint, _acs_access_key, "POST", url_path, payload)
+                    async with httpx.AsyncClient(timeout=30.0) as http:
+                        resp = await http.post(url, content=payload, headers=headers)
+
+                    print(f"📧 [EMAIL-RESPONSE] Status={resp.status_code} for {to_email}", flush=True)
+
+                    if resp.status_code in (200, 202):
+                        op_id = resp.headers.get("operation-location", resp.headers.get("x-ms-request-id", "?"))
+                        print(f"📧 [EMAIL-SENT] {subject} → {to_email} (operation: {op_id})", flush=True)
+                        await asyncio.sleep(8)
+                        return
+                    elif resp.status_code == 429:
+                        wait = delays[min(attempt, len(delays) - 1)]
+                        print(f"📧 [EMAIL-RETRY] 429 rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})", flush=True)
+                        await asyncio.sleep(wait)
+                    else:
+                        print(f"📧 [EMAIL-ERROR] {resp.status_code}: {resp.text[:500]}", flush=True)
+                        if attempt >= max_retries - 1:
+                            return
+                        await asyncio.sleep(delays[min(attempt, len(delays) - 1)])
+                except Exception as retry_err:
+                    print(f"📧 [EMAIL-EXCEPTION] Attempt {attempt + 1}: {retry_err}", flush=True)
+                    if attempt >= max_retries - 1:
+                        return
+                    await asyncio.sleep(delays[min(attempt, len(delays) - 1)])
     except Exception as e:
-        print(f"📧 [EMAIL-ERROR] Failed to send to {to_email}: {e}")
+        print(f"📧 [EMAIL-ERROR] Failed to send to {to_email}: {e}", flush=True)
+
+
+def _dedup_key(data: dict) -> Optional[str]:
+    """Build a deduplication key from event data."""
+    pid = data.get("prescriptionId")
+    aid = data.get("appointmentId")
+    return pid or aid or None
+
+
+async def _already_notified(event_type: str, dedup_key: str, recipient_email: str) -> bool:
+    """Check if an in-app notification already exists for this event+recipient."""
+    if not dedup_key or not recipient_email:
+        return False
+    existing = await db.notifications.find_one({
+        "type": event_type,
+        "recipientEmail": recipient_email,
+        "channel": "in-app",
+        "$or": [
+            {"data.prescriptionId": dedup_key},
+            {"data.appointmentId": dedup_key},
+        ],
+    })
+    return existing is not None
 
 
 async def process_event(event_type: str, data: dict):
-    """Process a single event: save to DB + send email to both patient and doctor."""
-    now = datetime.utcnow().isoformat()
+    """Process a single event: save to DB + send email. Deduplicates by event key."""
+    now = _utcnow()
     title, message = generate_notification_content(event_type, data)
     patient_email = data.get("patientEmail") or data.get("recipientEmail")
     patient_name = data.get("patientName") or data.get("recipientName") or "Patient"
     doctor_email = data.get("doctorEmail")
     doctor_name = data.get("doctorName", "Doctor")
+    dedup = _dedup_key(data)
 
     # ─── Patient notification ───
-    doc = {
-        "type": event_type,
-        "recipientEmail": patient_email,
-        "recipientName": patient_name,
-        "title": title,
-        "message": message,
-        "data": data,
-        "status": "sent",
-        "channel": "in-app",
-        "readAt": None,
-        "createdAt": now,
-    }
-    await db.notifications.insert_one(doc)
-
-    if patient_email:
-        await send_email(patient_email, title, patient_name, title, message)
-        await db.notifications.insert_one({
-            **doc, "_id": ObjectId(), "channel": "email", "status": "sent",
-        })
-
-    # ─── Doctor notification ───
-    doctor_content = generate_doctor_content(event_type, data)
-    if doctor_content and doctor_email:
-        d_title, d_message = doctor_content
-        d_doc = {
+    if not await _already_notified(event_type, dedup, patient_email):
+        doc = {
             "type": event_type,
-            "recipientEmail": doctor_email,
-            "recipientName": doctor_name,
-            "title": d_title,
-            "message": d_message,
+            "recipientEmail": patient_email,
+            "recipientName": patient_name,
+            "title": title,
+            "message": message,
             "data": data,
             "status": "sent",
             "channel": "in-app",
             "readAt": None,
             "createdAt": now,
         }
-        await db.notifications.insert_one(d_doc)
-        await send_email(doctor_email, d_title, doctor_name, d_title, d_message)
-        await db.notifications.insert_one({
-            **d_doc, "_id": ObjectId(), "channel": "email", "status": "sent",
-        })
+        await db.notifications.insert_one(doc)
 
-    print(f"🔔 [PROCESSED] {event_type} for patient={patient_email or 'unknown'} doctor={doctor_email or 'unknown'}")
+        if patient_email:
+            async def _bg_patient():
+                try:
+                    await send_email(patient_email, title, patient_name, title, message)
+                    await db.notifications.insert_one({
+                        **doc, "_id": ObjectId(), "channel": "email", "status": "sent",
+                    })
+                except Exception as e:
+                    print(f"📧 [BG-EMAIL-ERROR] patient {patient_email}: {e}", flush=True)
+            asyncio.create_task(_bg_patient())
+    else:
+        print(f"🔔 [DEDUP-SKIP] {event_type} already sent to patient={patient_email}", flush=True)
+
+    # ─── Doctor notification (skip entirely for prescriptions — doctor just created it) ───
+    is_prescription = event_type in ("prescription.created", "prescription_created")
+    if is_prescription:
+        print(f"🔔 [SKIP-DOCTOR] Prescription notification not needed for doctor={doctor_email}")
+    elif not await _already_notified(event_type, dedup, doctor_email):
+        doctor_content = generate_doctor_content(event_type, data)
+        if doctor_content and doctor_email:
+            d_title, d_message = doctor_content
+            d_doc = {
+                "type": event_type,
+                "recipientEmail": doctor_email,
+                "recipientName": doctor_name,
+                "title": d_title,
+                "message": d_message,
+                "data": data,
+                "status": "sent",
+                "channel": "in-app",
+                "readAt": None,
+                "createdAt": now,
+            }
+            await db.notifications.insert_one(d_doc)
+            print(f"🔔 [DOCTOR-NOTIF] Created '{d_title}' for doctor={doctor_email}", flush=True)
+            async def _bg_doctor():
+                try:
+                    await send_email(doctor_email, d_title, doctor_name, d_title, d_message)
+                    await db.notifications.insert_one({
+                        **d_doc, "_id": ObjectId(), "channel": "email", "status": "sent",
+                    })
+                except Exception as e:
+                    print(f"📧 [BG-EMAIL-ERROR] doctor {doctor_email}: {e}", flush=True)
+            asyncio.create_task(_bg_doctor())
+    else:
+        print(f"🔔 [DEDUP-SKIP] {event_type} already sent to doctor={doctor_email}", flush=True)
+
+    print(f"🔔 [PROCESSED] {event_type} for patient={patient_email or 'unknown'} doctor={doctor_email or 'unknown'}", flush=True)
 
 
 async def consume_queue(queue_name: str):
@@ -287,15 +415,40 @@ async def consume_queue(queue_name: str):
 
 @app.on_event("startup")
 async def startup():
-    global client, db, sb_client, email_client
+    global client, db, sb_client, _acs_endpoint, _acs_access_key
     client = AsyncIOMotorClient(MONGO_URI)
     db = client[DB_NAME]
     print("🔔 Connected to MongoDB (notifications)")
 
-    # Initialize ACS Email client
+    # ── Deduplicate existing in-app notifications on startup (Cosmos DB compatible) ──
+    try:
+        duplicates = 0
+        seen = set()  # (type, recipientEmail, prescriptionId or appointmentId)
+        cursor = db.notifications.find({"channel": "in-app"}).sort("_id", 1)
+        async for doc in cursor:
+            key = (
+                doc.get("type", ""),
+                doc.get("recipientEmail", ""),
+                (doc.get("data") or {}).get("prescriptionId", ""),
+                (doc.get("data") or {}).get("appointmentId", ""),
+            )
+            if key in seen:
+                await db.notifications.delete_one({"_id": doc["_id"]})
+                duplicates += 1
+            else:
+                seen.add(key)
+        # Also remove email-channel duplicates (only in-app should display)
+        email_del = await db.notifications.delete_many({"channel": "email"})
+        duplicates += email_del.deleted_count
+        if duplicates:
+            print(f"🧹 Cleaned up {duplicates} duplicate/email notifications")
+    except Exception as e:
+        print(f"🧹 Dedup cleanup error: {e}")
+
+    # Initialize ACS Email (REST API, no SDK poller)
     if ACS_CONNECTION_STRING:
-        email_client = EmailClient.from_connection_string(ACS_CONNECTION_STRING)
-        print(f"📧 ACS Email client initialized (sender: {ACS_SENDER_EMAIL})")
+        _acs_endpoint, _acs_access_key = _parse_acs_connection_string(ACS_CONNECTION_STRING)
+        print(f"📧 ACS Email configured (endpoint: {_acs_endpoint}, sender: {ACS_SENDER_EMAIL})")
     else:
         print("📧 No ACS_CONNECTION_STRING — emails will be skipped")
 
@@ -312,20 +465,19 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
-    global sb_client, email_client
+    global sb_client
     for task in event_tasks:
         task.cancel()
     if sb_client:
         await sb_client.close()
         sb_client = None
-    email_client = None
     if client:
         client.close()
 
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "notification-service", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "service": "notification-service", "timestamp": _utcnow()}
 
 
 @app.post("/api", response_model=NotificationResponse)
@@ -333,7 +485,25 @@ async def health():
 async def create_notification(notif: NotificationCreate):
     data_dict = notif.data.dict() if notif.data else {}
     title, message = generate_notification_content(notif.type, data_dict)
-    now = datetime.utcnow().isoformat()
+    now = _utcnow()
+
+    # Dedup check: skip if same notification already exists for this recipient
+    dedup = _dedup_key(data_dict)
+    if dedup and notif.recipientEmail:
+        if await _already_notified(notif.type, dedup, notif.recipientEmail):
+            # Return existing notification instead of creating duplicate
+            existing = await db.notifications.find_one({
+                "type": notif.type, "recipientEmail": notif.recipientEmail, "channel": "in-app",
+            })
+            if existing:
+                existing["id"] = str(existing.pop("_id"))
+                return NotificationResponse(
+                    id=existing["id"], type=existing.get("type", notif.type),
+                    recipientEmail=existing.get("recipientEmail"), recipientName=existing.get("recipientName"),
+                    title=existing.get("title", title), message=existing.get("message", message),
+                    status=existing.get("status", "sent"), channel="in-app",
+                    createdAt=existing.get("createdAt", now),
+                )
 
     doc = {
         "type": notif.type,
@@ -350,15 +520,20 @@ async def create_notification(notif: NotificationCreate):
 
     result = await db.notifications.insert_one(doc)
 
-    # Send email notification
+    # Send email notification in the background (don't block the HTTP response)
     if notif.recipientEmail:
-        await send_email(notif.recipientEmail, title, notif.recipientName or "Patient", title, message)
-        await db.notifications.insert_one({
-            **doc,
-            "_id": ObjectId(),
-            "channel": "email",
-            "status": "sent",
-        })
+        async def _bg_email():
+            try:
+                await send_email(notif.recipientEmail, title, notif.recipientName or "Patient", title, message)
+                await db.notifications.insert_one({
+                    **doc,
+                    "_id": ObjectId(),
+                    "channel": "email",
+                    "status": "sent",
+                })
+            except Exception as e:
+                print(f"📧 [BG-EMAIL-ERROR] {e}")
+        asyncio.create_task(_bg_email())
 
     return NotificationResponse(
         id=str(result.inserted_id),
@@ -381,7 +556,7 @@ async def get_notifications(
     page: int = 1,
     limit: int = 20,
 ):
-    query = {}
+    query = {"channel": {"$ne": "email"}}
     if recipientEmail:
         query["recipientEmail"] = recipientEmail
     if status:
@@ -400,11 +575,14 @@ async def get_notifications(
 
 @app.get("/api/stats")
 @app.get("/api/notifications/stats")
-async def get_stats():
-    total = await db.notifications.count_documents({})
-    sent = await db.notifications.count_documents({"status": "sent"})
-    read = await db.notifications.count_documents({"status": "read"})
-    return {"total": total, "sent": sent, "read": read}
+async def get_stats(recipientEmail: Optional[str] = None):
+    base = {"channel": {"$ne": "email"}}
+    if recipientEmail:
+        base["recipientEmail"] = recipientEmail
+    total = await db.notifications.count_documents(base)
+    unread = await db.notifications.count_documents({**base, "status": "sent"})
+    read = await db.notifications.count_documents({**base, "status": "read"})
+    return {"total": total, "unread": unread, "sent": unread, "read": read}
 
 
 @app.patch("/api/{notif_id}/read")
@@ -413,10 +591,32 @@ async def mark_as_read(notif_id: str):
     try:
         result = await db.notifications.update_one(
             {"_id": ObjectId(notif_id)},
-            {"$set": {"status": "read", "readAt": datetime.utcnow().isoformat()}}
+            {"$set": {"status": "read", "readAt": _utcnow()}}
         )
         if result.modified_count == 0:
             raise HTTPException(status_code=404, detail="Notification not found")
         return {"message": "Marked as read"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/{notif_id}")
+@app.delete("/api/notifications/{notif_id}")
+async def delete_notification(notif_id: str):
+    try:
+        result = await db.notifications.delete_one({"_id": ObjectId(notif_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Notification not found")
+        return {"message": "Notification deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api")
+@app.delete("/api/notifications")
+async def clear_all_notifications(recipientEmail: Optional[str] = None):
+    query = {}
+    if recipientEmail:
+        query["recipientEmail"] = recipientEmail
+    result = await db.notifications.delete_many(query)
+    return {"message": f"Deleted {result.deleted_count} notifications"}

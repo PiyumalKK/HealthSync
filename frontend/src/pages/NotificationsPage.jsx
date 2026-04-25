@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
 import { notificationsAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
@@ -50,99 +51,6 @@ const notificationIcons = {
   ),
 };
 
-const mockNotifications = [
-  {
-    id: 1,
-    type: 'appointment',
-    title: 'Appointment Confirmed',
-    message: 'Your appointment with Dr. Kamal Perera on Dec 28 at 10:00 AM has been confirmed.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 15),
-    read: false,
-    actionUrl: '/appointments',
-  },
-  {
-    id: 2,
-    type: 'prescription',
-    title: 'Prescription Ready',
-    message: 'Your prescription for Metformin 500mg has been renewed by Dr. Nishani Fernando. You have 3 refills remaining.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    read: false,
-    actionUrl: '/dashboard',
-  },
-  {
-    id: 3,
-    type: 'reminder',
-    title: 'Medication Reminder',
-    message: 'Time to take your evening dose of Atorvastatin 20mg.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5),
-    read: false,
-    actionUrl: null,
-  },
-  {
-    id: 4,
-    type: 'system',
-    title: 'Lab Results Available',
-    message: 'Your blood work results from Dec 20 are now available. Click to view your complete report.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
-    read: true,
-    actionUrl: '/dashboard',
-  },
-  {
-    id: 5,
-    type: 'payment',
-    title: 'Payment Processed',
-    message: 'Payment of Rs. 5,000 for consultation with Dr. Dilani Silva has been successfully processed.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2),
-    read: true,
-    actionUrl: null,
-  },
-  {
-    id: 6,
-    type: 'appointment',
-    title: 'Appointment Reminder',
-    message: 'Reminder: You have an appointment with Dr. Nishani Fernando tomorrow at 2:30 PM.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2),
-    read: true,
-    actionUrl: '/appointments',
-  },
-  {
-    id: 7,
-    type: 'alert',
-    title: 'Health Alert',
-    message: 'Your blood pressure readings have been slightly elevated this week. Consider scheduling a check-up.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
-    read: true,
-    actionUrl: '/doctors',
-  },
-  {
-    id: 8,
-    type: 'system',
-    title: 'Profile Update',
-    message: 'Your insurance information has been verified and updated successfully.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5),
-    read: true,
-    actionUrl: '/profile',
-  },
-  {
-    id: 9,
-    type: 'prescription',
-    title: 'Refill Reminder',
-    message: 'Your Lisinopril 10mg prescription has only 1 refill remaining. Contact your doctor for renewal.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 6),
-    read: true,
-    actionUrl: '/dashboard',
-  },
-  {
-    id: 10,
-    type: 'reminder',
-    title: 'Annual Check-up Due',
-    message: 'Your annual health check-up is overdue. Schedule an appointment today to stay on top of your health.',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7),
-    read: true,
-    actionUrl: '/appointments',
-  },
-];
-
 const filterOptions = [
   { id: 'all', label: 'All' },
   { id: 'unread', label: 'Unread' },
@@ -153,6 +61,7 @@ const filterOptions = [
 ];
 
 export default function NotificationsPage() {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -160,7 +69,7 @@ export default function NotificationsPage() {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const { data } = await notificationsAPI.getAll();
+        const { data } = await notificationsAPI.getAll({ recipientEmail: user?.email });
         const list = data?.notifications || (Array.isArray(data) ? data : []);
         if (list.length > 0) {
           setNotifications(list.map(n => ({
@@ -193,16 +102,20 @@ export default function NotificationsPage() {
     try { await notificationsAPI.markRead(id); } catch { /* ignore */ }
   };
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
+    const unread = notifications.filter(n => !n.read);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    await Promise.allSettled(unread.map(n => notificationsAPI.markRead(n.id || n._id).catch(() => {})));
   };
 
-  const deleteNotification = (id) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+  const deleteNotification = async (id) => {
+    setNotifications(prev => prev.filter(n => (n.id || n._id) !== id));
+    try { await notificationsAPI.delete(id); } catch { /* ignore */ }
   };
 
-  const clearAll = () => {
+  const clearAll = async () => {
     setNotifications([]);
+    try { await notificationsAPI.clearAll(user?.email); } catch { /* ignore */ }
   };
 
   return (
