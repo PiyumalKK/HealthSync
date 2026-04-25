@@ -446,15 +446,20 @@ async def create_notification(notif: NotificationCreate):
 
     result = await db.notifications.insert_one(doc)
 
-    # Send email notification
+    # Send email notification in the background (don't block the HTTP response)
     if notif.recipientEmail:
-        await send_email(notif.recipientEmail, title, notif.recipientName or "Patient", title, message)
-        await db.notifications.insert_one({
-            **doc,
-            "_id": ObjectId(),
-            "channel": "email",
-            "status": "sent",
-        })
+        async def _bg_email():
+            try:
+                await send_email(notif.recipientEmail, title, notif.recipientName or "Patient", title, message)
+                await db.notifications.insert_one({
+                    **doc,
+                    "_id": ObjectId(),
+                    "channel": "email",
+                    "status": "sent",
+                })
+            except Exception as e:
+                print(f"📧 [BG-EMAIL-ERROR] {e}")
+        asyncio.create_task(_bg_email())
 
     return NotificationResponse(
         id=str(result.inserted_id),

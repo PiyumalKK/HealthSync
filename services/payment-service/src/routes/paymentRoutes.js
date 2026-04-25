@@ -123,24 +123,26 @@ router.get('/verify/:sessionId', async (req, res) => {
         paidAt: new Date(),
       });
 
-      // Update appointment status to confirmed (non-critical)
+      // Update appointment status to confirmed (non-critical, fire-and-forget)
       try {
         const axios = require('axios');
+        const axiosOpts = { timeout: 10000 };
         const appointmentUrl = process.env.APPOINTMENT_SERVICE_URL || 'http://appointment-service:3003';
-        await axios.patch(`${appointmentUrl}/api/${payment.appointmentId}/confirm`, {
+        axios.patch(`${appointmentUrl}/api/${payment.appointmentId}/confirm`, {
           notes: 'Payment confirmed via Stripe',
-        }).catch(() => {});
+        }, axiosOpts).catch(() => {});
       } catch {
         // Non-critical
       }
 
-      // Notify (non-critical)
+      // Notify (non-critical, fire-and-forget)
       try {
         const axios = require('axios');
+        const axiosOpts = { timeout: 10000 };
         const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3005';
         const amountStr = `Rs. ${Number(payment.amount).toLocaleString()}`;
         // Notify patient
-        await axios.post(`${notificationUrl}/api/notifications`, {
+        axios.post(`${notificationUrl}/api/notifications`, {
           type: 'payment_received',
           recipientName: payment.patientName,
           recipientEmail: payment.patientEmail,
@@ -149,10 +151,10 @@ router.get('/verify/:sessionId', async (req, res) => {
             doctorName: payment.doctorName,
             amount: amountStr,
           },
-        }).catch(() => {});
+        }, axiosOpts).catch(() => {});
         // Notify doctor
         if (payment.doctorEmail) {
-          await axios.post(`${notificationUrl}/api/notifications`, {
+          axios.post(`${notificationUrl}/api/notifications`, {
             type: 'payment_received_doctor',
             recipientName: payment.doctorName,
             recipientEmail: payment.doctorEmail,
@@ -162,7 +164,7 @@ router.get('/verify/:sessionId', async (req, res) => {
               patientName: payment.patientName,
               amount: amountStr,
             },
-          }).catch(() => {});
+          }, axiosOpts).catch(() => {});
         }
       } catch {
         // Non-critical
