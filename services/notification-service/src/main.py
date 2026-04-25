@@ -192,7 +192,7 @@ email_tmpl = jinja_env.from_string(EMAIL_TEMPLATE)
 async def send_email(to_email: str, subject: str, name: str, title: str, message: str):
     """Send email notification via Azure Communication Services Email."""
     if not email_client:
-        print(f"📧 [EMAIL-SKIP] No ACS Email configured. Would send to {to_email}: {subject}")
+        print(f"📧 [EMAIL-SKIP] No ACS Email configured. Would send to {to_email}: {subject}", flush=True)
         return
 
     try:
@@ -208,28 +208,36 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
                 "html": html,
             },
         }
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         max_retries = 5
         delays = [10, 20, 40, 60]
         async with _email_semaphore:
             for attempt in range(max_retries):
                 try:
-                    result = await loop.run_in_executor(
-                        None, lambda: email_client.begin_send(email_message).result()
+                    print(f"📧 [EMAIL-SENDING] Attempt {attempt + 1} → {to_email}: {subject}", flush=True)
+                    result = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None, lambda: email_client.begin_send(email_message).result()
+                        ),
+                        timeout=120,
                     )
-                    print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})")
-                    # Cool-down after successful send to avoid rate-limit on next email
+                    print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})", flush=True)
                     await asyncio.sleep(8)
                     return
+                except asyncio.TimeoutError:
+                    print(f"📧 [EMAIL-TIMEOUT] Timed out sending to {to_email} (attempt {attempt + 1}/{max_retries})", flush=True)
+                    if attempt >= max_retries - 1:
+                        return
+                    await asyncio.sleep(delays[min(attempt, len(delays) - 1)])
                 except Exception as retry_err:
                     if "TooManyRequests" in str(retry_err) and attempt < max_retries - 1:
                         wait = delays[min(attempt, len(delays) - 1)]
-                        print(f"📧 [EMAIL-RETRY] Rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})")
+                        print(f"📧 [EMAIL-RETRY] Rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})", flush=True)
                         await asyncio.sleep(wait)
                     else:
                         raise retry_err
     except Exception as e:
-        print(f"📧 [EMAIL-ERROR] Failed to send to {to_email}: {e}")
+        print(f"📧 [EMAIL-ERROR] Failed to send to {to_email}: {e}", flush=True)
 
 
 def _dedup_key(data: dict) -> Optional[str]:
@@ -289,10 +297,10 @@ async def process_event(event_type: str, data: dict):
                         **doc, "_id": ObjectId(), "channel": "email", "status": "sent",
                     })
                 except Exception as e:
-                    print(f"📧 [BG-EMAIL-ERROR] patient {patient_email}: {e}")
+                    print(f"📧 [BG-EMAIL-ERROR] patient {patient_email}: {e}", flush=True)
             asyncio.create_task(_bg_patient())
     else:
-        print(f"🔔 [DEDUP-SKIP] {event_type} already sent to patient={patient_email}")
+        print(f"🔔 [DEDUP-SKIP] {event_type} already sent to patient={patient_email}", flush=True)
 
     # ─── Doctor notification (skip entirely for prescriptions — doctor just created it) ───
     is_prescription = event_type in ("prescription.created", "prescription_created")
@@ -315,7 +323,7 @@ async def process_event(event_type: str, data: dict):
                 "createdAt": now,
             }
             await db.notifications.insert_one(d_doc)
-            print(f"🔔 [DOCTOR-NOTIF] Created '{d_title}' for doctor={doctor_email}")
+            print(f"🔔 [DOCTOR-NOTIF] Created '{d_title}' for doctor={doctor_email}", flush=True)
             async def _bg_doctor():
                 try:
                     await send_email(doctor_email, d_title, doctor_name, d_title, d_message)
@@ -323,12 +331,12 @@ async def process_event(event_type: str, data: dict):
                         **d_doc, "_id": ObjectId(), "channel": "email", "status": "sent",
                     })
                 except Exception as e:
-                    print(f"📧 [BG-EMAIL-ERROR] doctor {doctor_email}: {e}")
+                    print(f"📧 [BG-EMAIL-ERROR] doctor {doctor_email}: {e}", flush=True)
             asyncio.create_task(_bg_doctor())
     else:
-        print(f"🔔 [DEDUP-SKIP] {event_type} already sent to doctor={doctor_email}")
+        print(f"🔔 [DEDUP-SKIP] {event_type} already sent to doctor={doctor_email}", flush=True)
 
-    print(f"🔔 [PROCESSED] {event_type} for patient={patient_email or 'unknown'} doctor={doctor_email or 'unknown'}")
+    print(f"🔔 [PROCESSED] {event_type} for patient={patient_email or 'unknown'} doctor={doctor_email or 'unknown'}", flush=True)
 
 
 async def consume_queue(queue_name: str):
