@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { prescriptionsAPI } from '../services/api'
+import { prescriptionsAPI, appointmentsAPI } from '../services/api'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
-import { FileText, Plus, Trash2, Send } from 'lucide-react'
+import { FileText, Plus, Trash2, Send, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function PrescriptionCreatePage() {
@@ -13,6 +13,8 @@ export default function PrescriptionCreatePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState(false)
+  const [confirmedAppointments, setConfirmedAppointments] = useState([])
+  const [loadingAppointments, setLoadingAppointments] = useState(true)
 
   const [formData, setFormData] = useState({
     patientName: searchParams.get('patientName') || '',
@@ -27,6 +29,43 @@ export default function PrescriptionCreatePage() {
   const [medications, setMedications] = useState([
     { name: '', dosage: '', frequency: '', duration: '', instructions: '' }
   ])
+
+  // Fetch confirmed/completed appointments for this doctor
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      try {
+        const [confirmedRes, completedRes] = await Promise.all([
+          appointmentsAPI.getAll({ doctorId: user.id, status: 'confirmed', limit: 50 }),
+          appointmentsAPI.getAll({ doctorId: user.id, status: 'completed', limit: 50 }),
+        ])
+        const confirmed = confirmedRes.data?.appointments || []
+        const completed = completedRes.data?.appointments || []
+        setConfirmedAppointments([...confirmed, ...completed])
+      } catch (err) {
+        console.error('Failed to fetch appointments:', err)
+      } finally {
+        setLoadingAppointments(false)
+      }
+    }
+    if (user?.id) fetchAppointments()
+  }, [user?.id])
+
+  const handleSelectAppointment = (appointmentId) => {
+    if (!appointmentId) {
+      setFormData(prev => ({ ...prev, appointmentId: '', patientId: '', patientName: '', patientEmail: '' }))
+      return
+    }
+    const appt = confirmedAppointments.find(a => a.id === appointmentId)
+    if (appt) {
+      setFormData(prev => ({
+        ...prev,
+        appointmentId: appt.id,
+        patientId: appt.patientId,
+        patientName: appt.patientName || '',
+        patientEmail: appt.patientEmail || '',
+      }))
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -61,10 +100,10 @@ export default function PrescriptionCreatePage() {
         patientId: formData.patientId || `patient_${Date.now()}`,
         patientName: formData.patientName,
         patientEmail: formData.patientEmail,
-        appointmentId: formData.appointmentId || undefined,
+        appointmentId: formData.appointmentId || `walk-in_${Date.now()}`,
         diagnosis: formData.diagnosis,
-        medications: medications.filter(m => m.name),
-        notes: formData.notes,
+        medicines: medications.filter(m => m.name),
+        additionalNotes: formData.notes,
         followUpDate: formData.followUpDate || undefined,
       })
       toast.success('Prescription created successfully!')
@@ -92,9 +131,34 @@ export default function PrescriptionCreatePage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Patient Info */}
+            {/* Patient Selection */}
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-              <h3 className="text-white font-semibold mb-4">Patient Information</h3>
+              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-cyan-400" /> Select Patient
+              </h3>
+
+              {/* Appointment Dropdown */}
+              <div className="mb-4">
+                <label className="block text-sm text-white/50 mb-1">Select from Confirmed Appointments</label>
+                <select
+                  value={formData.appointmentId}
+                  onChange={(e) => handleSelectAppointment(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 appearance-none"
+                >
+                  <option value="" className="bg-slate-900 text-white">
+                    {loadingAppointments ? 'Loading appointments...' : '-- Select a patient appointment --'}
+                  </option>
+                  {confirmedAppointments.map(appt => (
+                    <option key={appt.id} value={appt.id} className="bg-slate-900 text-white">
+                      {appt.patientName} — {appt.appointmentDate} {appt.appointmentTime} ({appt.status})
+                    </option>
+                  ))}
+                </select>
+                {!loadingAppointments && confirmedAppointments.length === 0 && (
+                  <p className="text-amber-400/70 text-xs mt-1">No confirmed or completed appointments found. You can enter patient info manually below.</p>
+                )}
+              </div>
+
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-white/50 mb-1">Patient Name *</label>
