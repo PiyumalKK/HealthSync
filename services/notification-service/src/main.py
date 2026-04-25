@@ -221,60 +221,90 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
         print(f"📧 [EMAIL-ERROR] Failed to send to {to_email}: {e}")
 
 
+def _dedup_key(data: dict) -> Optional[str]:
+    """Build a deduplication key from event data."""
+    pid = data.get("prescriptionId")
+    aid = data.get("appointmentId")
+    return pid or aid or None
+
+
+async def _already_notified(event_type: str, dedup_key: str, recipient_email: str) -> bool:
+    """Check if an in-app notification already exists for this event+recipient."""
+    if not dedup_key or not recipient_email:
+        return False
+    existing = await db.notifications.find_one({
+        "type": event_type,
+        "recipientEmail": recipient_email,
+        "channel": "in-app",
+        "$or": [
+            {"data.prescriptionId": dedup_key},
+            {"data.appointmentId": dedup_key},
+        ],
+    })
+    return existing is not None
+
+
 async def process_event(event_type: str, data: dict):
-    """Process a single event: save to DB + send email to both patient and doctor."""
+    """Process a single event: save to DB + send email. Deduplicates by event key."""
     now = datetime.utcnow().isoformat()
     title, message = generate_notification_content(event_type, data)
     patient_email = data.get("patientEmail") or data.get("recipientEmail")
     patient_name = data.get("patientName") or data.get("recipientName") or "Patient"
     doctor_email = data.get("doctorEmail")
     doctor_name = data.get("doctorName", "Doctor")
+    dedup = _dedup_key(data)
 
     # ─── Patient notification ───
-    doc = {
-        "type": event_type,
-        "recipientEmail": patient_email,
-        "recipientName": patient_name,
-        "title": title,
-        "message": message,
-        "data": data,
-        "status": "sent",
-        "channel": "in-app",
-        "readAt": None,
-        "createdAt": now,
-    }
-    await db.notifications.insert_one(doc)
-
-    if patient_email:
-        await send_email(patient_email, title, patient_name, title, message)
-        await db.notifications.insert_one({
-            **doc, "_id": ObjectId(), "channel": "email", "status": "sent",
-        })
-
-    # ─── Doctor notification (in-app + email, skip email for prescriptions) ───
-    doctor_content = generate_doctor_content(event_type, data)
-    if doctor_content and doctor_email:
-        d_title, d_message = doctor_content
-        d_doc = {
+    if not await _already_notified(event_type, dedup, patient_email):
+        doc = {
             "type": event_type,
-            "recipientEmail": doctor_email,
-            "recipientName": doctor_name,
-            "title": d_title,
-            "message": d_message,
+            "recipientEmail": patient_email,
+            "recipientName": patient_name,
+            "title": title,
+            "message": message,
             "data": data,
             "status": "sent",
             "channel": "in-app",
             "readAt": None,
             "createdAt": now,
         }
-        await db.notifications.insert_one(d_doc)
-        # Skip email for prescriptions — doctor just created it
-        is_prescription = event_type in ("prescription.created", "prescription_created")
-        if not is_prescription:
+        await db.notifications.insert_one(doc)
+
+        if patient_email:
+            await send_email(patient_email, title, patient_name, title, message)
+            await db.notifications.insert_one({
+                **doc, "_id": ObjectId(), "channel": "email", "status": "sent",
+            })
+    else:
+        print(f"🔔 [DEDUP-SKIP] {event_type} already sent to patient={patient_email}")
+
+    # ─── Doctor notification (skip entirely for prescriptions — doctor just created it) ───
+    is_prescription = event_type in ("prescription.created", "prescription_created")
+    if is_prescription:
+        print(f"🔔 [SKIP-DOCTOR] Prescription notification not needed for doctor={doctor_email}")
+    elif not await _already_notified(event_type, dedup, doctor_email):
+        doctor_content = generate_doctor_content(event_type, data)
+        if doctor_content and doctor_email:
+            d_title, d_message = doctor_content
+            d_doc = {
+                "type": event_type,
+                "recipientEmail": doctor_email,
+                "recipientName": doctor_name,
+                "title": d_title,
+                "message": d_message,
+                "data": data,
+                "status": "sent",
+                "channel": "in-app",
+                "readAt": None,
+                "createdAt": now,
+            }
+            await db.notifications.insert_one(d_doc)
             await send_email(doctor_email, d_title, doctor_name, d_title, d_message)
             await db.notifications.insert_one({
                 **d_doc, "_id": ObjectId(), "channel": "email", "status": "sent",
             })
+    else:
+        print(f"🔔 [DEDUP-SKIP] {event_type} already sent to doctor={doctor_email}")
 
     print(f"🔔 [PROCESSED] {event_type} for patient={patient_email or 'unknown'} doctor={doctor_email or 'unknown'}")
 
@@ -314,6 +344,33 @@ async def startup():
     client = AsyncIOMotorClient(MONGO_URI)
     db = client[DB_NAME]
     print("🔔 Connected to MongoDB (notifications)")
+
+    # ── Deduplicate existing in-app notifications on startup ──
+    try:
+        pipeline = [
+            {"$match": {"channel": "in-app"}},
+            {"$group": {
+                "_id": {
+                    "type": "$type",
+                    "recipientEmail": "$recipientEmail",
+                    "prescriptionId": "$data.prescriptionId",
+                    "appointmentId": "$data.appointmentId",
+                },
+                "ids": {"$push": "$_id"},
+                "count": {"$sum": 1},
+            }},
+            {"$match": {"count": {"$gt": 1}}},
+        ]
+        duplicates = 0
+        async for group in db.notifications.aggregate(pipeline):
+            # Keep the first, delete the rest
+            to_delete = group["ids"][1:]
+            await db.notifications.delete_many({"_id": {"$in": to_delete}})
+            duplicates += len(to_delete)
+        if duplicates:
+            print(f"🧹 Cleaned up {duplicates} duplicate in-app notifications")
+    except Exception as e:
+        print(f"🧹 Dedup cleanup skipped: {e}")
 
     # Initialize ACS Email client
     if ACS_CONNECTION_STRING:
