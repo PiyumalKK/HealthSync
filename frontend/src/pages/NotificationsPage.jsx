@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
 import { notificationsAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
@@ -60,6 +61,7 @@ const filterOptions = [
 ];
 
 export default function NotificationsPage() {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -67,7 +69,7 @@ export default function NotificationsPage() {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const { data } = await notificationsAPI.getAll();
+        const { data } = await notificationsAPI.getAll({ recipientEmail: user?.email });
         const list = data?.notifications || (Array.isArray(data) ? data : []);
         if (list.length > 0) {
           setNotifications(list.map(n => ({
@@ -113,7 +115,7 @@ export default function NotificationsPage() {
 
   const clearAll = async () => {
     setNotifications([]);
-    try { await notificationsAPI.clearAll(); } catch { /* ignore */ }
+    try { await notificationsAPI.clearAll(user?.email); } catch { /* ignore */ }
   };
 
   return (

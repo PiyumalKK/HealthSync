@@ -81,7 +81,7 @@ export default function Navbar() {
     if (!isAuthenticated) return
     const fetchCount = async () => {
       try {
-        const { data } = await notificationsAPI.getStats()
+        const { data } = await notificationsAPI.getStats(user?.email)
         setNotifCount(data?.unread || 0)
       } catch {
         // ignore

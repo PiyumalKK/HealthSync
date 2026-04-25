@@ -201,7 +201,9 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
             },
         }
         loop = asyncio.get_event_loop()
-        for attempt in range(3):
+        max_retries = 5
+        delays = [5, 10, 20, 30]
+        for attempt in range(max_retries):
             try:
                 result = await loop.run_in_executor(
                     None, lambda: email_client.begin_send(email_message).result()
@@ -209,9 +211,9 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
                 print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})")
                 return
             except Exception as retry_err:
-                if "TooManyRequests" in str(retry_err) and attempt < 2:
-                    wait = (attempt + 1) * 2
-                    print(f"📧 [EMAIL-RETRY] Rate limited, waiting {wait}s (attempt {attempt + 1}/3)")
+                if "TooManyRequests" in str(retry_err) and attempt < max_retries - 1:
+                    wait = delays[min(attempt, len(delays) - 1)]
+                    print(f"📧 [EMAIL-RETRY] Rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})")
                     await asyncio.sleep(wait)
                 else:
                     raise retry_err
@@ -249,7 +251,7 @@ async def process_event(event_type: str, data: dict):
             **doc, "_id": ObjectId(), "channel": "email", "status": "sent",
         })
 
-    # ─── Doctor notification ───
+    # ─── Doctor notification (in-app + email, skip email for prescriptions) ───
     doctor_content = generate_doctor_content(event_type, data)
     if doctor_content and doctor_email:
         d_title, d_message = doctor_content
@@ -266,10 +268,13 @@ async def process_event(event_type: str, data: dict):
             "createdAt": now,
         }
         await db.notifications.insert_one(d_doc)
-        await send_email(doctor_email, d_title, doctor_name, d_title, d_message)
-        await db.notifications.insert_one({
-            **d_doc, "_id": ObjectId(), "channel": "email", "status": "sent",
-        })
+        # Skip email for prescriptions — doctor just created it
+        is_prescription = event_type in ("prescription.created", "prescription_created")
+        if not is_prescription:
+            await send_email(doctor_email, d_title, doctor_name, d_title, d_message)
+            await db.notifications.insert_one({
+                **d_doc, "_id": ObjectId(), "channel": "email", "status": "sent",
+            })
 
     print(f"🔔 [PROCESSED] {event_type} for patient={patient_email or 'unknown'} doctor={doctor_email or 'unknown'}")
 
@@ -418,8 +423,10 @@ async def get_notifications(
 
 @app.get("/api/stats")
 @app.get("/api/notifications/stats")
-async def get_stats():
+async def get_stats(recipientEmail: Optional[str] = None):
     base = {"channel": {"$ne": "email"}}
+    if recipientEmail:
+        base["recipientEmail"] = recipientEmail
     total = await db.notifications.count_documents(base)
     unread = await db.notifications.count_documents({**base, "status": "sent"})
     read = await db.notifications.count_documents({**base, "status": "read"})

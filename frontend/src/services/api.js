@@ -169,10 +169,10 @@ export const prescriptionsAPI = {
 // ===================== NOTIFICATIONS API =====================
 export const notificationsAPI = {
   getAll: (params) => api.get('/notifications', { params }),
-  getStats: () => api.get('/notifications/stats'),
+  getStats: (email) => api.get('/notifications/stats', { params: { recipientEmail: email } }),
   markRead: (id) => api.patch(`/notifications/${id}/read`),
   delete: (id) => api.delete(`/notifications/${id}`),
-  clearAll: () => api.delete('/notifications'),
+  clearAll: (email) => api.delete('/notifications', { params: { recipientEmail: email } }),
 };
 
 // ===================== REVIEWS API =====================
