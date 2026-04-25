@@ -275,10 +275,15 @@ async def process_event(event_type: str, data: dict):
         await db.notifications.insert_one(doc)
 
         if patient_email:
-            await send_email(patient_email, title, patient_name, title, message)
-            await db.notifications.insert_one({
-                **doc, "_id": ObjectId(), "channel": "email", "status": "sent",
-            })
+            async def _bg_patient():
+                try:
+                    await send_email(patient_email, title, patient_name, title, message)
+                    await db.notifications.insert_one({
+                        **doc, "_id": ObjectId(), "channel": "email", "status": "sent",
+                    })
+                except Exception as e:
+                    print(f"📧 [BG-EMAIL-ERROR] patient {patient_email}: {e}")
+            asyncio.create_task(_bg_patient())
     else:
         print(f"🔔 [DEDUP-SKIP] {event_type} already sent to patient={patient_email}")
 
@@ -303,10 +308,15 @@ async def process_event(event_type: str, data: dict):
                 "createdAt": now,
             }
             await db.notifications.insert_one(d_doc)
-            await send_email(doctor_email, d_title, doctor_name, d_title, d_message)
-            await db.notifications.insert_one({
-                **d_doc, "_id": ObjectId(), "channel": "email", "status": "sent",
-            })
+            async def _bg_doctor():
+                try:
+                    await send_email(doctor_email, d_title, doctor_name, d_title, d_message)
+                    await db.notifications.insert_one({
+                        **d_doc, "_id": ObjectId(), "channel": "email", "status": "sent",
+                    })
+                except Exception as e:
+                    print(f"📧 [BG-EMAIL-ERROR] doctor {doctor_email}: {e}")
+            asyncio.create_task(_bg_doctor())
     else:
         print(f"🔔 [DEDUP-SKIP] {event_type} already sent to doctor={doctor_email}")
 
