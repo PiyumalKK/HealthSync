@@ -107,17 +107,6 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// Get payment by ID
-router.get('/:id', async (req, res) => {
-  try {
-    const payment = await Payment.findByPk(req.params.id);
-    if (!payment) return res.status(404).json({ error: 'Payment not found' });
-    res.json(payment);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Verify payment status (called by frontend after redirect)
 router.get('/verify/:sessionId', async (req, res) => {
   try {
@@ -170,6 +159,17 @@ router.get('/verify/:sessionId', async (req, res) => {
     }
 
     res.json({ payment });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get payment by ID (must be after /stats and /verify to avoid catching those)
+router.get('/:id', async (req, res) => {
+  try {
+    const payment = await Payment.findByPk(req.params.id);
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    res.json(payment);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
