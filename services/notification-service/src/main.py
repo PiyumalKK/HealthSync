@@ -9,8 +9,12 @@ from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from azure.servicebus.aio import ServiceBusClient
-from azure.communication.email import EmailClient
 from jinja2 import Environment, BaseLoader
+import httpx
+import hashlib
+import hmac
+import base64
+from urllib.parse import urlparse
 
 app = FastAPI(title="HealthSync Notification Service", version="2.0.0")
 
@@ -35,7 +39,8 @@ ACS_SENDER_EMAIL = os.getenv("ACS_SENDER_EMAIL", "healthsync@15904a49-17e2-4535-
 client: Optional[AsyncIOMotorClient] = None
 db = None
 sb_client: Optional[ServiceBusClient] = None
-email_client: Optional[EmailClient] = None
+_acs_endpoint: Optional[str] = None
+_acs_access_key: Optional[str] = None
 event_tasks: list = []
 
 # Semaphore to limit concurrent ACS email sends (ACS free tier: ~1 email/min)
@@ -189,15 +194,48 @@ jinja_env = Environment(loader=BaseLoader())
 email_tmpl = jinja_env.from_string(EMAIL_TEMPLATE)
 
 
+def _parse_acs_connection_string(conn_str: str):
+    """Parse ACS connection string into endpoint and access key."""
+    parts = {}
+    for part in conn_str.split(";"):
+        if "=" in part:
+            key, val = part.split("=", 1)
+            parts[key.strip()] = val.strip()
+    endpoint = parts.get("endpoint", "").rstrip("/")
+    access_key = parts.get("accesskey", "")
+    return endpoint, access_key
+
+
+def _acs_auth_headers(endpoint: str, access_key: str, method: str, url_path: str, body: str) -> dict:
+    """Generate HMAC-SHA256 auth headers for ACS REST API."""
+    import uuid as _uuid
+    parsed = urlparse(endpoint)
+    host = parsed.hostname
+    content_hash = base64.b64encode(hashlib.sha256(body.encode("utf-8")).digest()).decode("utf-8")
+    timestamp = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    string_to_sign = f"{method}\n{url_path}\n{timestamp};{host};{content_hash}"
+    signature = base64.b64encode(
+        hmac.new(base64.b64decode(access_key), string_to_sign.encode("utf-8"), hashlib.sha256).digest()
+    ).decode("utf-8")
+    return {
+        "x-ms-date": timestamp,
+        "x-ms-content-sha256": content_hash,
+        "Authorization": f"HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature={signature}",
+        "Content-Type": "application/json",
+        "Repeatability-Request-ID": str(_uuid.uuid4()),
+        "Repeatability-First-Sent": timestamp,
+    }
+
+
 async def send_email(to_email: str, subject: str, name: str, title: str, message: str):
-    """Send email notification via Azure Communication Services Email."""
-    if not email_client:
-        print(f"📧 [EMAIL-SKIP] No ACS Email configured. Would send to {to_email}: {subject}", flush=True)
+    """Send email via ACS REST API directly (no SDK poller)."""
+    if not _acs_endpoint or not _acs_access_key:
+        print(f"📧 [EMAIL-SKIP] No ACS configured. Would send to {to_email}: {subject}", flush=True)
         return
 
     try:
         html = email_tmpl.render(title=title, name=name, message=message)
-        email_message = {
+        payload = json.dumps({
             "senderAddress": ACS_SENDER_EMAIL,
             "recipients": {
                 "to": [{"address": to_email, "displayName": name}]
@@ -207,46 +245,42 @@ async def send_email(to_email: str, subject: str, name: str, title: str, message
                 "plainText": message,
                 "html": html,
             },
-        }
-        loop = asyncio.get_running_loop()
+        })
+
+        url_path = "/emails:send?api-version=2023-03-31"
+        url = f"{_acs_endpoint}{url_path}"
         max_retries = 5
         delays = [10, 20, 40, 60]
+
         async with _email_semaphore:
             for attempt in range(max_retries):
                 try:
                     print(f"📧 [EMAIL-SENDING] Attempt {attempt + 1} → {to_email}: {subject}", flush=True)
-                    poller = await asyncio.wait_for(
-                        loop.run_in_executor(
-                            None, lambda: email_client.begin_send(email_message)
-                        ),
-                        timeout=30,
-                    )
-                    print(f"📧 [EMAIL-QUEUED] {subject} → {to_email} (status: {poller.status()})", flush=True)
-                    # Wait briefly for delivery confirmation, but don't block forever
-                    try:
-                        result = await asyncio.wait_for(
-                            loop.run_in_executor(None, lambda: poller.result()),
-                            timeout=60,
-                        )
-                        print(f"📧 [EMAIL-SENT] {subject} → {to_email} (id: {result['id']})", flush=True)
-                    except (asyncio.TimeoutError, Exception) as poll_err:
-                        print(f"📧 [EMAIL-POLL-SKIP] Delivery poll timed out but email was queued: {poll_err}", flush=True)
-                    await asyncio.sleep(8)
-                    return
-                except asyncio.TimeoutError:
-                    print(f"📧 [EMAIL-TIMEOUT] begin_send timed out for {to_email} (attempt {attempt + 1}/{max_retries})", flush=True)
+                    headers = _acs_auth_headers(_acs_endpoint, _acs_access_key, "POST", url_path, payload)
+                    async with httpx.AsyncClient(timeout=30.0) as http:
+                        resp = await http.post(url, content=payload, headers=headers)
+
+                    print(f"📧 [EMAIL-RESPONSE] Status={resp.status_code} for {to_email}", flush=True)
+
+                    if resp.status_code in (200, 202):
+                        op_id = resp.headers.get("operation-location", resp.headers.get("x-ms-request-id", "?"))
+                        print(f"📧 [EMAIL-SENT] {subject} → {to_email} (operation: {op_id})", flush=True)
+                        await asyncio.sleep(8)
+                        return
+                    elif resp.status_code == 429:
+                        wait = delays[min(attempt, len(delays) - 1)]
+                        print(f"📧 [EMAIL-RETRY] 429 rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})", flush=True)
+                        await asyncio.sleep(wait)
+                    else:
+                        print(f"📧 [EMAIL-ERROR] {resp.status_code}: {resp.text[:500]}", flush=True)
+                        if attempt >= max_retries - 1:
+                            return
+                        await asyncio.sleep(delays[min(attempt, len(delays) - 1)])
+                except Exception as retry_err:
+                    print(f"📧 [EMAIL-EXCEPTION] Attempt {attempt + 1}: {retry_err}", flush=True)
                     if attempt >= max_retries - 1:
                         return
                     await asyncio.sleep(delays[min(attempt, len(delays) - 1)])
-                except Exception as retry_err:
-                    err_str = str(retry_err)
-                    print(f"📧 [EMAIL-EXCEPTION] {err_str}", flush=True)
-                    if "TooManyRequests" in err_str and attempt < max_retries - 1:
-                        wait = delays[min(attempt, len(delays) - 1)]
-                        print(f"📧 [EMAIL-RETRY] Rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})", flush=True)
-                        await asyncio.sleep(wait)
-                    else:
-                        raise retry_err
     except Exception as e:
         print(f"📧 [EMAIL-ERROR] Failed to send to {to_email}: {e}", flush=True)
 
@@ -381,7 +415,7 @@ async def consume_queue(queue_name: str):
 
 @app.on_event("startup")
 async def startup():
-    global client, db, sb_client, email_client
+    global client, db, sb_client, _acs_endpoint, _acs_access_key
     client = AsyncIOMotorClient(MONGO_URI)
     db = client[DB_NAME]
     print("🔔 Connected to MongoDB (notifications)")
@@ -411,10 +445,10 @@ async def startup():
     except Exception as e:
         print(f"🧹 Dedup cleanup error: {e}")
 
-    # Initialize ACS Email client
+    # Initialize ACS Email (REST API, no SDK poller)
     if ACS_CONNECTION_STRING:
-        email_client = EmailClient.from_connection_string(ACS_CONNECTION_STRING)
-        print(f"📧 ACS Email client initialized (sender: {ACS_SENDER_EMAIL})")
+        _acs_endpoint, _acs_access_key = _parse_acs_connection_string(ACS_CONNECTION_STRING)
+        print(f"📧 ACS Email configured (endpoint: {_acs_endpoint}, sender: {ACS_SENDER_EMAIL})")
     else:
         print("📧 No ACS_CONNECTION_STRING — emails will be skipped")
 
@@ -431,13 +465,12 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
-    global sb_client, email_client
+    global sb_client
     for task in event_tasks:
         task.cancel()
     if sb_client:
         await sb_client.close()
         sb_client = None
-    email_client = None
     if client:
         client.close()
 
